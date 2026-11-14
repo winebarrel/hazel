@@ -2,7 +2,7 @@
 
 # Changelog
 
-## [Unreleased]
+## [1.0.0] - 2026-11-14
 
 * hazel is generally available.
 
@@ -28,5 +28,6 @@
 
 * The `hazel` command, with `plan` and `diff`. `plan DB SCHEMA_FILE...` prints the DDL that takes a database to the schema files, and `diff OLD_SCHEMA_FILE NEW_SCHEMA_FILE` the DDL that takes one schema file to another. A plan that rebuilds a table fails with exit status 3 unless `--allow-table-rebuild` is given, `--check` exits with status 2 when there are changes, and `-I` / `-E` select the tables, views and virtual tables by name. Options can also come from environment variables (`HAZEL_*`) and from a YAML file given with `-C`.
 
-[unreleased]: https://github.com/winebarrel/hazel/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/winebarrel/hazel/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/winebarrel/hazel/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/winebarrel/hazel/commits/v0.1.0
