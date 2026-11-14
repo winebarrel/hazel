@@ -965,4 +965,10 @@ func TestFmtErrors(t *testing.T) {
 	b, err := os.ReadFile("good.sql")
 	require.NoError(t, err)
 	assert.Equal(t, "CREATE TABLE t (a,b);", string(b))
+
+	// A file that cannot be written.
+	require.NoError(t, os.Chmod("good.sql", 0o444))
+	_, errOut, code := hazel(t, "fmt", "good.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "good.sql")
 }

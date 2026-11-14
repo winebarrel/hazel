@@ -65,14 +65,11 @@ func sameSchema(ctx context.Context, before *desired.Result, formatted []desired
 		return err
 	}
 	plan, err := diff.Diff(before.Schema, after.Schema)
-	if err != nil {
-		return err
-	}
 	same := slices.EqualFunc(before.Executes, after.Executes, func(a, b desired.Execute) bool {
 		return a.SQL == b.SQL && a.Condition == b.Condition
 	})
-	if !plan.IsEmpty() || !same {
-		return fmt.Errorf("the plan from the files to the formatted files is not empty:\n%s", plan)
+	if err == nil && (!plan.IsEmpty() || !same) {
+		err = fmt.Errorf("the plan from the files to the formatted files is not empty:\n%s", plan)
 	}
-	return nil
+	return err
 }
