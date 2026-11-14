@@ -197,10 +197,11 @@ func (l *loader) readStatement(file string, stmt parser.Statement) error {
 			if kind != parser.CreateTable {
 				return misplaced(d, "a table or a column")
 			}
-			if d.Arg == "" {
-				return fmt.Errorf("%s:%d: %s%s needs the old name", file, d.Line, parser.DirectivePrefix, d.Name)
+			name, ok := parser.ParseName(d.Arg)
+			if !ok {
+				return needsName(file, d)
 			}
-			l.tableRename[key] = d.Arg
+			l.tableRename[key] = name
 		}
 	}
 	if kind == parser.CreateTable {
@@ -233,16 +234,23 @@ func (l *loader) readColumns(file, table string, stmt parser.Statement) error {
 			case d.Name != parser.RenamedFrom || e.Column == "":
 				return fmt.Errorf("%s:%d: %s%s cannot be written before a column or a table constraint",
 					file, d.Line, parser.DirectivePrefix, d.Name)
-			case d.Arg == "":
-				return fmt.Errorf("%s:%d: %s%s needs the old name", file, d.Line, parser.DirectivePrefix, d.Name)
+			}
+			name, ok := parser.ParseName(d.Arg)
+			if !ok {
+				return needsName(file, d)
 			}
 			if l.columnRename[table] == nil {
 				l.columnRename[table] = map[string]string{}
 			}
-			l.columnRename[table][model.Key(e.Column)] = d.Arg
+			l.columnRename[table][model.Key(e.Column)] = name
 		}
 	}
 	return nil
+}
+
+// needsName reports a renamed-from whose argument is not one name.
+func needsName(file string, d parser.Directive) error {
+	return fmt.Errorf("%s:%d: %s%s needs one name, the old one, as it is written in SQL", file, d.Line, parser.DirectivePrefix, d.Name)
 }
 
 // mark puts the directives on the schema read back.

@@ -54,6 +54,7 @@ func (d *differ) renames() error {
 	for _, s := range stmts {
 		d.b.add(renameTables, "", s)
 	}
+	d.rechecks = true
 	renamed, err := replay(d.cur, stmts)
 	if err != nil {
 		return err

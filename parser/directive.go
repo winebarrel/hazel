@@ -37,14 +37,23 @@ func directive(t Token) (Directive, bool) {
 	return Directive{Name: name, Arg: strings.TrimSpace(arg), Line: t.Line}, true
 }
 
-// directives returns the directives among tokens, and an error for a name
-// that is not a directive.
-func directives(tokens []Token) ([]Directive, error) {
+// directives returns the directives among tokens, the whitespace and
+// comments before a statement or an element. It returns an error for a name
+// that is not a directive, and, when tokens come after a separator, for a
+// directive on the line the separator ends: written there, it reads as if it
+// were for the statement or the element before.
+func directives(tokens []Token, afterSeparator bool) ([]Directive, error) {
 	var ds []Directive
+	newLine := !afterSeparator
 	for _, t := range tokens {
 		d, ok := directive(t)
 		if !ok {
+			newLine = newLine || strings.Contains(t.Text, "\n")
 			continue
+		}
+		if !newLine {
+			return nil, &Error{Line: d.Line, Err: fmt.Errorf(
+				"%s%s is on the line of what comes before it; write it on a line of its own", DirectivePrefix, d.Name)}
 		}
 		switch d.Name {
 		case RenamedFrom, Ignore, Execute:
@@ -58,12 +67,27 @@ func directives(tokens []Token) ([]Directive, error) {
 
 // Directives returns the directives in the comments before the statement.
 func (s Statement) Directives() ([]Directive, error) {
-	return directives(s.leading())
+	afterSeparator := len(s.Tokens) > 0 && s.Tokens[0].Offset > 0
+	return directives(s.leading(), afterSeparator)
 }
 
 // Directives returns the directives in the comments before the element.
 func (e TableElement) Directives() ([]Directive, error) {
-	return directives(e.Leading)
+	return directives(e.Leading, e.afterComma)
+}
+
+// ParseName reads one name, quoted or not, as an identifier is written in
+// SQL, and returns it without its quotes.
+func ParseName(s string) (string, bool) {
+	tokens, err := Tokenize(s)
+	if err != nil {
+		return "", false
+	}
+	tokens = significant(tokens)
+	if len(tokens) != 1 || (tokens[0].Kind != Ident && tokens[0].Kind != QuotedIdent) {
+		return "", false
+	}
+	return tokens[0].Name(), true
 }
 
 func (s Statement) leading() []Token {

@@ -238,8 +238,11 @@ func TestLoadDirectiveErrors(t *testing.T) {
 		{"execute on a CREATE", "-- hazel:execute\nCREATE TABLE t (a);", "schema.sql:1: hazel:execute is for a statement that hazel does not manage"},
 		{"ignore on an INSERT", "-- hazel:ignore\nINSERT INTO t VALUES (1);", "schema.sql:1: hazel:ignore is for a table, an index, a view or a trigger"},
 		{"renamed-from on an index", "CREATE TABLE t (a);\n-- hazel:renamed-from j\nCREATE INDEX i ON t (a);", "schema.sql:2: hazel:renamed-from is for a table or a column"},
-		{"renamed-from without a name", "-- hazel:renamed-from\nCREATE TABLE t (a);", "schema.sql:1: hazel:renamed-from needs the old name"},
-		{"column renamed-from without a name", "CREATE TABLE t (\n  -- hazel:renamed-from\n  a\n);", "schema.sql:2: hazel:renamed-from needs the old name"},
+		{"renamed-from without a name", "-- hazel:renamed-from\nCREATE TABLE t (a);", "schema.sql:1: hazel:renamed-from needs one name, the old one, as it is written in SQL"},
+		{"column renamed-from without a name", "CREATE TABLE t (\n  -- hazel:renamed-from\n  a\n);", "schema.sql:2: hazel:renamed-from needs one name, the old one, as it is written in SQL"},
+		{"renamed-from with two names", "-- hazel:renamed-from a b\nCREATE TABLE t (x);", "schema.sql:1: hazel:renamed-from needs one name, the old one, as it is written in SQL"},
+		{"directive after a statement", "CREATE TABLE a (x); -- hazel:ignore\nCREATE TABLE b (y);", "schema.sql:1: hazel:ignore is on the line of what comes before it; write it on a line of its own"},
+		{"directive after a column", "CREATE TABLE t (\n  a, -- hazel:renamed-from x\n  b\n);", "schema.sql:2: hazel:renamed-from is on the line of what comes before it; write it on a line of its own"},
 		{"ignore on a column", "CREATE TABLE t (\n  -- hazel:ignore\n  a\n);", "schema.sql:2: hazel:ignore cannot be written before a column or a table constraint"},
 		{"renamed-from on a constraint", "CREATE TABLE t (\n  a,\n  -- hazel:renamed-from c\n  CHECK (a > 0)\n);", "schema.sql:3: hazel:renamed-from cannot be written before a column or a table constraint"},
 	}

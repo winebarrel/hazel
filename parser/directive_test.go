@@ -40,19 +40,62 @@ func TestStatementDirectivesUnknown(t *testing.T) {
 }
 
 func TestElementDirectives(t *testing.T) {
-	elems := parser.TableElements(statement(t, `CREATE TABLE t (
-  id INTEGER PRIMARY KEY, -- hazel:renamed-from uid
+	elems := parser.TableElements(statement(t, `CREATE TABLE t ( -- hazel:renamed-from uid
+  id INTEGER PRIMARY KEY, -- a note
   -- hazel:renamed-from name
   display_name TEXT -- not this one
 )`))
 	require.Len(t, elems, 2)
+	// After the opening parenthesis, a directive on the same line is for the
+	// first element.
 	ds, err := elems[0].Directives()
 	require.NoError(t, err)
-	assert.Empty(t, ds)
-	// A comment after the separator belongs to the next element.
+	assert.Equal(t, []parser.Directive{{Name: "renamed-from", Arg: "uid", Line: 1}}, ds)
 	ds, err = elems[1].Directives()
 	require.NoError(t, err)
-	assert.Equal(t, []parser.Directive{{Name: "renamed-from", Arg: "uid", Line: 2}, {Name: "renamed-from", Arg: "name", Line: 3}}, ds)
+	assert.Equal(t, []parser.Directive{{Name: "renamed-from", Arg: "name", Line: 3}}, ds)
+}
+
+func TestDirectivesOnThePreviousLine(t *testing.T) {
+	// A directive on the line of the comma or the ";" before it reads as if
+	// it were for what comes before, so it is an error.
+	elems := parser.TableElements(statement(t, "CREATE TABLE t (\n  a, -- hazel:renamed-from x\n  b\n)"))
+	_, err := elems[1].Directives()
+	require.EqualError(t, err, "line 2: hazel:renamed-from is on the line of what comes before it; write it on a line of its own")
+
+	tokens, err := parser.Tokenize("CREATE TABLE a (x); -- hazel:ignore\nCREATE TABLE b (y);")
+	require.NoError(t, err)
+	_, err = parser.Split(tokens)[1].Directives()
+	require.EqualError(t, err, "line 1: hazel:ignore is on the line of what comes before it; write it on a line of its own")
+
+	// A block comment that spans lines puts the directive on a line of its
+	// own.
+	tokens, err = parser.Tokenize("CREATE TABLE a (x); /* note\n */ -- hazel:ignore\nCREATE TABLE b (y);")
+	require.NoError(t, err)
+	ds, err := parser.Split(tokens)[1].Directives()
+	require.NoError(t, err)
+	assert.Len(t, ds, 1)
+}
+
+func TestParseName(t *testing.T) {
+	for _, tt := range []struct {
+		s, want string
+		ok      bool
+	}{
+		{"users", "users", true},
+		{` "Old Name" `, "Old Name", true},
+		{"[a b]", "a b", true},
+		{"a b", "", false},
+		{"'a'", "", false},
+		{"", "", false},
+		{`"open`, "", false},
+	} {
+		t.Run(tt.s, func(t *testing.T) {
+			got, ok := parser.ParseName(tt.s)
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestWithoutDirectives(t *testing.T) {
