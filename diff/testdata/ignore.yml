@@ -1,0 +1,21 @@
+init: |
+  CREATE TABLE legacy (id INTEGER PRIMARY KEY, body TEXT);
+  CREATE TABLE t (a, b);
+  CREATE INDEX t_a ON t (a);
+  CREATE VIEW v AS SELECT a FROM t;
+  CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END;
+# Ignored objects are not created, changed or dropped, whatever their
+# definitions say.
+desired: |
+  -- hazel:ignore
+  CREATE TABLE legacy (id INTEGER PRIMARY KEY);
+  -- hazel:ignore
+  CREATE TABLE new_but_ignored (x);
+  CREATE TABLE t (a, b);
+  -- hazel:ignore
+  CREATE INDEX t_a ON t (b);
+  -- hazel:ignore
+  CREATE VIEW v AS SELECT b FROM t;
+  -- hazel:ignore
+  CREATE TRIGGER tr AFTER DELETE ON t BEGIN SELECT 2; END;
+plan: ""

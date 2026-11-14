@@ -26,12 +26,22 @@ const (
 // or a view that is dropped before the ALTER, is dropped and created again
 // too, and so on for the views that name those.
 //
+// A table or a column whose desired definition has -- hazel:renamed-from is
+// renamed first, when the old name is in current and the new one is not.
+// SQLite rewrites what refers to the old name (foreign keys, views and
+// triggers) as it renames, so current is compared as it is after the
+// renames: the renames are run on a copy of it in memory. An object marked
+// with -- hazel:ignore is not created, changed or dropped.
+//
 // Definitions are compared with parser.TokensEqual, and constraints by their
 // content, not their names. Changing a column, a PRIMARY KEY, a UNIQUE, a
 // FOREIGN KEY or a CHECK constraint, STRICT, WITHOUT ROWID or AUTOINCREMENT
 // is not supported yet and returns an error.
 func Diff(current, desired *model.Schema) (*Plan, error) {
 	d := &differ{cur: current, des: desired, dependencies: map[string]string{}, recreatedViews: map[string]bool{}}
+	if err := d.renames(); err != nil {
+		return nil, err
+	}
 	if err := d.tables(); err != nil {
 		return nil, err
 	}
@@ -64,6 +74,7 @@ func (d *differ) tables() error {
 	for key, cur := range d.cur.Tables.All() {
 		des, ok := d.des.Tables.GetOk(key)
 		switch {
+		case ok && des.Ignored:
 		case !ok:
 			d.b.add(dropTables, removed, "DROP TABLE "+q(cur.Name))
 			d.b.dataLoss = append(d.b.dataLoss, "table  "+cur.Name)
@@ -80,7 +91,7 @@ func (d *differ) tables() error {
 		}
 	}
 	for key, des := range d.des.Tables.All() {
-		if !d.cur.Tables.Has(key) {
+		if !d.cur.Tables.Has(key) && !des.Ignored {
 			d.b.add(createTables, "", des.SQL)
 		}
 	}
@@ -163,6 +174,7 @@ func (d *differ) indexes() {
 	for key, cur := range d.cur.Indexes.All() {
 		des, ok := d.des.Indexes.GetOk(key)
 		switch {
+		case ok && des.Ignored:
 		case !ok:
 			// An index goes with its table when the table is dropped.
 			if d.des.Tables.Has(model.Key(cur.Table)) {
@@ -174,7 +186,7 @@ func (d *differ) indexes() {
 		}
 	}
 	for key, des := range d.des.Indexes.All() {
-		if !d.cur.Indexes.Has(key) {
+		if !d.cur.Indexes.Has(key) && !des.Ignored {
 			d.b.add(createIndexes, "", des.SQL)
 		}
 	}
@@ -185,6 +197,7 @@ func (d *differ) views() {
 	for key, cur := range d.cur.Views.All() {
 		des, ok := d.des.Views.GetOk(key)
 		switch {
+		case ok && des.Ignored:
 		case !ok:
 			d.b.add(dropViewsAndTriggers, removed, "DROP VIEW "+q(cur.Name))
 		case !sqlEqual(cur.SQL, des.SQL):
@@ -209,7 +222,7 @@ func (d *differ) views() {
 		}
 	}
 	for key, des := range d.des.Views.All() {
-		if !d.cur.Views.Has(key) {
+		if !d.cur.Views.Has(key) && !des.Ignored {
 			d.b.add(createViews, "", des.SQL)
 		}
 	}
@@ -226,6 +239,9 @@ func (d *differ) recreateView(key, comment string) {
 func (d *differ) triggers() {
 	for key, cur := range d.cur.Triggers.All() {
 		des, ok := d.des.Triggers.GetOk(key)
+		if ok && des.Ignored {
+			continue
+		}
 		table := model.Key(cur.Table)
 		// The DROP VIEW of a view created again drops its triggers, and so
 		// does the DROP TABLE of a table that is dropped.
@@ -250,7 +266,7 @@ func (d *differ) triggers() {
 		}
 	}
 	for key, des := range d.des.Triggers.All() {
-		if !d.cur.Triggers.Has(key) {
+		if !d.cur.Triggers.Has(key) && !des.Ignored {
 			d.b.add(createTriggers, "", des.SQL)
 		}
 	}

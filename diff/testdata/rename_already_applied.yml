@@ -1,0 +1,11 @@
+init: |
+  CREATE TABLE members (id INTEGER PRIMARY KEY, display_name TEXT);
+# The directives stay in the file after the apply and do nothing then.
+desired: |
+  -- hazel:renamed-from users
+  CREATE TABLE members (
+    id INTEGER PRIMARY KEY,
+    -- hazel:renamed-from name
+    display_name TEXT
+  );
+plan: ""

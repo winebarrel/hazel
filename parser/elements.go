@@ -14,6 +14,9 @@ type TableElement struct {
 	// Tokens are the tokens of the element, from its first significant token
 	// to its last, with the whitespace and comments between them.
 	Tokens []Token
+	// Leading are the whitespace and comments between the separator before
+	// the element and the element, where its directives are written.
+	Leading []Token
 }
 
 // SQL returns the text of the element.
@@ -57,13 +60,16 @@ func TableElements(s Statement) []TableElement {
 var constraintKeywords = []string{"CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOREIGN"}
 
 func newTableElement(tokens []Token) TableElement {
-	for len(tokens) > 0 && tokens[0].IsTrivia() {
-		tokens = tokens[1:]
+	n := 0
+	for n < len(tokens) && tokens[n].IsTrivia() {
+		n++
 	}
+	leading := tokens[:n]
+	tokens = tokens[n:]
 	for len(tokens) > 0 && tokens[len(tokens)-1].IsTrivia() {
 		tokens = tokens[:len(tokens)-1]
 	}
-	e := TableElement{Tokens: tokens}
+	e := TableElement{Tokens: tokens, Leading: leading}
 	if len(tokens) == 0 {
 		return e
 	}

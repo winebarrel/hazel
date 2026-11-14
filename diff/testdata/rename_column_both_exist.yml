@@ -1,0 +1,8 @@
+init: |
+  CREATE TABLE t (a, b);
+desired: |
+  CREATE TABLE t (
+    -- hazel:renamed-from a
+    b
+  );
+error: "table t: both columns a and b exist, so a cannot be renamed"

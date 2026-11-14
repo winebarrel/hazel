@@ -1,0 +1,7 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY);
+  CREATE TABLE members (id INTEGER PRIMARY KEY);
+desired: |
+  -- hazel:renamed-from users
+  CREATE TABLE members (id INTEGER PRIMARY KEY);
+error: "table members: both users and members exist, so it cannot be renamed"

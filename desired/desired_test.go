@@ -14,10 +14,11 @@ import (
 
 func load(t *testing.T, srcs ...desired.Source) ([]string, []desired.Warning, error) {
 	t.Helper()
-	schema, warnings, err := desired.Load(context.Background(), srcs)
+	result, err := desired.Load(context.Background(), srcs)
 	if err != nil {
 		return nil, nil, err
 	}
+	schema, warnings := result.Schema, result.Warnings
 	var names []string
 	for x := range schema.Tables.Values() {
 		names = append(names, "table "+x.Name)
@@ -171,4 +172,81 @@ func TestLoadEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, names)
 	assert.Empty(t, warnings)
+}
+
+func TestLoadDirectives(t *testing.T) {
+	result, err := desired.Load(context.Background(), []desired.Source{{Name: "schema.sql", Body: `-- hazel:renamed-from users
+CREATE TABLE members (
+  id INTEGER PRIMARY KEY,
+  -- hazel:renamed-from name
+  display_name TEXT
+);
+-- hazel:ignore
+CREATE TABLE legacy (x);
+-- hazel:ignore
+CREATE VIRTUAL TABLE docs USING fts5(body);
+-- hazel:ignore
+CREATE INDEX legacy_x ON legacy (x);
+-- hazel:ignore
+CREATE VIEW v AS SELECT x FROM legacy;
+-- hazel:ignore
+CREATE TRIGGER tr AFTER INSERT ON legacy BEGIN SELECT 1; END;
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+-- hazel:execute SELECT NOT EXISTS (SELECT 1 FROM settings)
+INSERT INTO settings VALUES ('version', '1');
+-- hazel:execute
+UPDATE settings SET value = '2';
+`}})
+	require.NoError(t, err)
+	s := result.Schema
+
+	members := s.Tables.Get("members")
+	assert.Equal(t, "users", members.RenamedFrom)
+	assert.Equal(t, "name", members.Columns.Get("display_name").RenamedFrom)
+	assert.Empty(t, members.Columns.Get("id").RenamedFrom)
+	assert.False(t, members.Ignored)
+	// The directives are not kept in the SQL.
+	assert.NotContains(t, members.SQL, "hazel:")
+
+	assert.True(t, s.Tables.Get("legacy").Ignored)
+	assert.True(t, s.Tables.Get("docs").Ignored)
+	assert.True(t, s.Indexes.Get("legacy_x").Ignored)
+	assert.True(t, s.Views.Get("v").Ignored)
+	assert.True(t, s.Triggers.Get("tr").Ignored)
+	assert.False(t, s.Tables.Get("settings").Ignored)
+
+	// The statements marked with execute are kept, not run, and not warned
+	// about.
+	assert.Empty(t, result.Warnings)
+	assert.Equal(t, []desired.Execute{
+		{
+			File: "schema.sql", Line: 19, SQL: "INSERT INTO settings VALUES ('version', '1');",
+			Condition: "SELECT NOT EXISTS (SELECT 1 FROM settings)",
+		},
+		{File: "schema.sql", Line: 21, SQL: "UPDATE settings SET value = '2';"},
+	}, result.Executes)
+}
+
+func TestLoadDirectiveErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"unknown", "-- hazel:renamed_from x\nCREATE TABLE t (a);", "schema.sql:1: unknown directive: hazel:renamed_from"},
+		{"unknown on a column", "CREATE TABLE t (\n  -- hazel:nope\n  a\n);", "schema.sql:2: unknown directive: hazel:nope"},
+		{"execute on a CREATE", "-- hazel:execute\nCREATE TABLE t (a);", "schema.sql:1: hazel:execute is for a statement that hazel does not manage"},
+		{"ignore on an INSERT", "-- hazel:ignore\nINSERT INTO t VALUES (1);", "schema.sql:1: hazel:ignore is for a table, an index, a view or a trigger"},
+		{"renamed-from on an index", "CREATE TABLE t (a);\n-- hazel:renamed-from j\nCREATE INDEX i ON t (a);", "schema.sql:2: hazel:renamed-from is for a table or a column"},
+		{"renamed-from without a name", "-- hazel:renamed-from\nCREATE TABLE t (a);", "schema.sql:1: hazel:renamed-from needs the old name"},
+		{"column renamed-from without a name", "CREATE TABLE t (\n  -- hazel:renamed-from\n  a\n);", "schema.sql:2: hazel:renamed-from needs the old name"},
+		{"ignore on a column", "CREATE TABLE t (\n  -- hazel:ignore\n  a\n);", "schema.sql:2: hazel:ignore cannot be written before a column or a table constraint"},
+		{"renamed-from on a constraint", "CREATE TABLE t (\n  a,\n  -- hazel:renamed-from c\n  CHECK (a > 0)\n);", "schema.sql:3: hazel:renamed-from cannot be written before a column or a table constraint"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := desired.Load(context.Background(), []desired.Source{{Name: "schema.sql", Body: tt.body}})
+			assert.EqualError(t, err, tt.want)
+		})
+	}
 }
