@@ -19,6 +19,7 @@ var version = "(devel)"
 type cli struct {
 	Config  kong.ConfigFlag  `short:"C" name:"config" placeholder:"FILE" env:"HAZEL_CONFIG" help:"Load options from a YAML file."`
 	Version kong.VersionFlag `help:"Print the version of hazel and of the SQLite it bundles."`
+	Pager   *bool            `negatable:"" help:"Send the output through the command in HAZEL_PAGER even when it does not go to a terminal. --no-pager never does."`
 
 	Plan  command.Plan  `cmd:"" help:"Print the DDL that takes the database to the schema files."`
 	Apply command.Apply `cmd:"" help:"Run the DDL that takes the database to the schema files, in one transaction."`
@@ -52,7 +53,15 @@ func run(args []string, stdout, stderr io.Writer, exit func(int)) {
 	kctx, err := parser.Parse(args)
 	parser.FatalIfErrorf(err)
 
+	w, closePager, err := command.StartPager(stdout, cli.Pager)
+	kctx.FatalIfErrorf(err)
+	// The pager has to finish before the exit, which skips the defers; the
+	// defer covers a panic.
+	defer closePager()
+	kctx.BindTo(w, (*io.Writer)(nil))
+
 	err = kctx.Run()
+	closePager()
 	// --check reports changes as exit status 2, and a rebuild that is not
 	// allowed as 3, with the message an error takes.
 	if _, ok := errors.AsType[*command.RebuildRequiredError](err); ok {

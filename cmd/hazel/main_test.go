@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -985,4 +986,80 @@ func TestFmtErrors(t *testing.T) {
 	_, errOut, code := hazel(t, "fmt", "good.sql")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errOut, "good.sql")
+}
+
+// hazelToFile runs the command with its standard output going to a file, as
+// it goes to a terminal or a pipe, and returns what was written and the exit
+// status.
+func hazelToFile(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	f, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+	require.NoError(t, err)
+	defer f.Close()
+	code := 0
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				e, ok := r.(exited)
+				if !ok {
+					panic(r)
+				}
+				code = int(e)
+			}
+		}()
+		run(args, f, io.Discard, func(c int) { panic(exited(c)) })
+	}()
+	b, err := os.ReadFile(f.Name())
+	require.NoError(t, err)
+	return string(b), code
+}
+
+func TestPager(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the pager command is written for sh")
+	}
+	workdir(t, map[string]string{
+		"schema.sql": "CREATE TABLE t (a);",
+		"hazel.yml":  "pager: true\n",
+	})
+	t.Setenv("HAZEL_PAGER", "sed 's/^/| /'")
+	paged := "| -- Database: :memory:\n| -- Plan (1 table, 0 views, 0 indexes, 0 triggers)\n| CREATE TABLE t (\n|     a\n| );\n"
+
+	// --pager uses the pager although the output is not a terminal.
+	out, code := hazelToFile(t, "--pager", "plan", ":memory:", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, paged, out)
+	out, code = hazelToFile(t, "-C", "hazel.yml", "plan", ":memory:", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, paged, out)
+	// The exit status is kept.
+	out, code = hazelToFile(t, "--pager", "plan", "--check", ":memory:", "schema.sql")
+	assert.Equal(t, 2, code)
+	assert.Equal(t, paged, out)
+
+	// Without it, a file is written to directly, and so is any output with
+	// --no-pager or without HAZEL_PAGER.
+	plain := strings.ReplaceAll(paged, "| ", "")
+	for _, args := range [][]string{
+		{"plan", ":memory:", "schema.sql"},
+		{"--no-pager", "plan", ":memory:", "schema.sql"},
+		{"-C", "hazel.yml", "--no-pager", "plan", ":memory:", "schema.sql"},
+	} {
+		out, code = hazelToFile(t, args...)
+		assert.Equal(t, 0, code)
+		assert.Equal(t, plain, out)
+	}
+	t.Setenv("HAZEL_PAGER", "")
+	out, code = hazelToFile(t, "--pager", "plan", ":memory:", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, plain, out)
+
+	// A pager that cannot be started is an error.
+	t.Setenv("HAZEL_PAGER", "cat")
+	t.Setenv("PATH", "")
+	_, errOut, code := hazel(t, "--pager", "plan", ":memory:", "schema.sql")
+	assert.Equal(t, 0, code, "a buffer is not a file, so no pager is started")
+	assert.Empty(t, errOut)
+	_, code = hazelToFile(t, "--pager", "plan", ":memory:", "schema.sql")
+	assert.Equal(t, 1, code)
 }

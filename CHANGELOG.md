@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+* The output goes through the command in `HAZEL_PAGER`, run with `sh -c` (`cmd /c` on Windows), when it goes to a terminal. `--pager` uses the pager for any output, and `--no-pager` never does; without `HAZEL_PAGER`, neither does anything.
+
 * `plan`, `apply` and `diff` write the CREATE statements they run in the layout of `dump`: a CREATE TABLE has one column or constraint per line, and names lose the quotes they do not need. The statements are kept that way in the database.
 
 * A CREATE statement that ends with a `--` comment gets its `;` on the next line in the output of `plan`, `apply` and `diff`. The `;` was on the line of the comment, which took it in.
