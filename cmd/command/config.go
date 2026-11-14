@@ -21,8 +21,8 @@ var metaFlagTypes = map[reflect.Type]bool{
 }
 
 // YAMLConfig is a kong.ConfigurationLoader that reads options from a YAML
-// file, as pistachio does. The keys are the flag names (busy-timeout, not
-// busy_timeout), and a key that names no flag is an error. A value applies
+// file. The keys are the flag names (busy-timeout, not busy_timeout), and a
+// key that names no flag is an error. A value applies
 // only to a flag that is not set on the command line or by an environment
 // variable: flag > environment variable > config file > default.
 func YAMLConfig(r io.Reader) (kong.Resolver, error) {
