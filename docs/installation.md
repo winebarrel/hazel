@@ -19,12 +19,6 @@ curl -sSLO https://github.com/winebarrel/hazel/releases/download/vX.Y.Z/hazel_X.
 tar xf hazel_X.Y.Z_linux_amd64.tar.gz hazel
 ```
 
-## Go
-
-```
-go install github.com/winebarrel/hazel/cmd/hazel@latest
-```
-
 ## Verifying a download
 
 The release assets, `checksums.txt` and the binaries in the archives carry [GitHub artifact attestations](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations). They show that the file was built by the release workflow of this repository:
