@@ -75,7 +75,10 @@ INSERT INTO users VALUES (1, 'a');
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "-- Database: "+filepath.Join(dir, "app.db")+` (new file)
 -- Plan (1 table, 0 views, 1 index, 0 triggers)
-CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    name TEXT
+);
 CREATE INDEX users_name ON users (name);
 `, out)
 	assert.Equal(t, "hazel: warning: schema.sql:4: ignored unsupported statement: INSERT INTO users VALUES (1, 'a');\n", errOut)
@@ -122,7 +125,7 @@ func TestPlanRebuild(t *testing.T) {
 
 	out, _, code = hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
-	assert.Contains(t, out, "-- table rebuild: t (type of a)\nCREATE TABLE new_t (a TEXT);\n")
+	assert.Contains(t, out, "-- table rebuild: t (type of a)\nCREATE TABLE new_t (\n    a TEXT\n);\n")
 
 	t.Setenv("HAZEL_ALLOW_TABLE_REBUILD", "true")
 	_, _, code = hazel(t, "plan", "app.db", "schema.sql")
@@ -270,7 +273,7 @@ func TestPlanMemory(t *testing.T) {
 	out, _, code := hazel(t, "plan", ":memory:", "schema.sql")
 	assert.Equal(t, 0, code)
 	assert.True(t, strings.HasPrefix(out, "-- Database: :memory:\n"), out)
-	assert.Contains(t, out, "CREATE TABLE t (a);")
+	assert.Contains(t, out, "CREATE TABLE t (\n    a\n);")
 }
 
 func TestDiff(t *testing.T) {
@@ -287,7 +290,9 @@ func TestDiff(t *testing.T) {
 ALTER TABLE t ADD COLUMN b;
 -- drop: removed from schema
 DROP TABLE tmp_x;
-CREATE TABLE u (c);
+CREATE TABLE u (
+    c
+);
 `, out)
 
 	_, _, code = hazel(t, "diff", "--check", "old.sql", "new.sql")
@@ -412,9 +417,15 @@ UPDATE settings SET value = value || '!' WHERE key = 'version';
 	require.Equal(t, 0, code, out)
 	assert.Regexp(t, `^-- Database: `+regexp.QuoteMeta(filepath.Join(dir, "app.db"))+` \(new file\)
 -- Plan \(2 tables, 0 views, 0 indexes, 0 triggers\)
-CREATE TABLE settings \(key TEXT PRIMARY KEY, value TEXT\);
+CREATE TABLE settings \(
+    key TEXT PRIMARY KEY,
+    value TEXT
+\);
 -- ok \(\d+ms\)
-CREATE TABLE users \(id INTEGER PRIMARY KEY, name TEXT\);
+CREATE TABLE users \(
+    id INTEGER PRIMARY KEY,
+    name TEXT
+\);
 -- ok \(\d+ms\)
 -- hazel:execute SELECT NOT EXISTS \(SELECT 1 FROM settings WHERE key = 'version'\)
 INSERT INTO settings VALUES \('version', '1'\);

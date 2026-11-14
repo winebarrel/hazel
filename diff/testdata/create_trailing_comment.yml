@@ -1,0 +1,9 @@
+# A statement that ends with a "--" comment gets its ";" on the next line,
+# where the comment does not take it in.
+init: ""
+desired: |
+  CREATE VIEW v AS SELECT 1 -- one
+  ;
+plan: |
+  CREATE VIEW v AS SELECT 1 -- one
+  ;

@@ -9,7 +9,7 @@ desired: |
   CREATE INDEX posts_user_id ON posts (user_id);
 plan: |
   CREATE TABLE posts (
-    id INTEGER PRIMARY KEY,
-    user_id INT REFERENCES users (id)
+      id INTEGER PRIMARY KEY,
+      user_id INT REFERENCES users (id)
   );
   CREATE INDEX posts_user_id ON posts (user_id);

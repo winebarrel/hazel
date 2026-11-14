@@ -4,7 +4,9 @@ desired: |
   CREATE TABLE t (a INT) STRICT;
 plan: |
   -- table rebuild: t (STRICT)
-  CREATE TABLE new_t (a INT) STRICT;
+  CREATE TABLE new_t (
+      a INT
+  ) STRICT;
   INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

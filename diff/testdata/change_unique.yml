@@ -4,7 +4,10 @@ desired: |
   CREATE TABLE t (a UNIQUE, b);
 plan: |
   -- table rebuild: t (UNIQUE constraint)
-  CREATE TABLE new_t (a UNIQUE, b);
+  CREATE TABLE new_t (
+      a UNIQUE,
+      b
+  );
   INSERT INTO new_t (rowid, a, b) SELECT rowid, a, b FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

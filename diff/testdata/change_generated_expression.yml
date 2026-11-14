@@ -4,7 +4,10 @@ desired: |
   CREATE TABLE t (a, b AS (a + 2));
 plan: |
   -- table rebuild: t (generated expression of b)
-  CREATE TABLE new_t (a, b AS (a + 2));
+  CREATE TABLE new_t (
+      a,
+      b AS (a + 2)
+  );
   INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

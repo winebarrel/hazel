@@ -6,7 +6,12 @@ desired: |
   CREATE TABLE t (id INTEGER PRIMARY KEY, x, y, FOREIGN KEY (x, y) REFERENCES p (a, b));
 plan: |
   -- table rebuild: t (FOREIGN KEY constraint; adds column x; adds column y)
-  CREATE TABLE new_t (id INTEGER PRIMARY KEY, x, y, FOREIGN KEY (x, y) REFERENCES p (a, b));
+  CREATE TABLE new_t (
+      id INTEGER PRIMARY KEY,
+      x,
+      y,
+      FOREIGN KEY (x, y) REFERENCES p (a, b)
+  );
   INSERT INTO new_t (id) SELECT id FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

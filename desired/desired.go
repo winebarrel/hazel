@@ -11,6 +11,7 @@ import (
 
 	"github.com/winebarrel/hazel/catalog"
 	"github.com/winebarrel/hazel/db"
+	"github.com/winebarrel/hazel/format"
 	"github.com/winebarrel/hazel/model"
 	"github.com/winebarrel/hazel/parser"
 	"modernc.org/sqlite"
@@ -56,6 +57,13 @@ func (w Warning) String() string {
 type statement struct {
 	file string
 	stmt parser.Statement
+}
+
+// sql returns the statement as hazel runs it, and as SQLite then keeps it:
+// without its directives and its ";", and laid out by format.Statement.
+func (s statement) sql() string {
+	sql := strings.TrimSpace(s.stmt.WithoutDirectives())
+	return format.Statement(strings.TrimSuffix(sql, ";"))
 }
 
 func (s statement) errorf(err error) error {
@@ -311,7 +319,7 @@ func execAll(ctx context.Context, pool *sql.DB, phases [][]statement) error {
 	}
 	for _, stmts := range phases {
 		for _, s := range stmts {
-			if _, err := conn.ExecContext(ctx, s.stmt.WithoutDirectives()); err != nil {
+			if _, err := conn.ExecContext(ctx, s.sql()); err != nil {
 				return s.errorf(err)
 			}
 		}
