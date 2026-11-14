@@ -5,8 +5,10 @@ This page takes an existing database under hazel's management: the schema is wri
 ## Install
 
 ```
-go install github.com/winebarrel/hazel/cmd/hazel@latest
+brew install winebarrel/hazel/hazel
 ```
+
+See [Installation](installation.md) for the other ways.
 
 ## Write the schema to a file
 

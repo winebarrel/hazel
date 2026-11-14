@@ -33,3 +33,9 @@ include realworld.mk
 .PHONY: demo
 demo: build
 	vhs demo.tape
+
+# Tests scripts/merge-changelog.sh, the CHANGELOG.md merge driver that
+# .github/workflows/changelog-merge.yml runs.
+.PHONY: test-changelog
+test-changelog:
+	bash test/changelog/run.sh

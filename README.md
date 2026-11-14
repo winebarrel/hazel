@@ -17,10 +17,10 @@ The schema files are run in an in-memory database and read back from `sqlite_sch
 ## Install
 
 ```
-go install github.com/winebarrel/hazel/cmd/hazel@latest
+brew install winebarrel/hazel/hazel
 ```
 
-hazel bundles SQLite through [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite), so it needs no C compiler and no SQLite library.
+Release binaries and Linux packages are on the [releases](https://github.com/winebarrel/hazel/releases) page, and `go install github.com/winebarrel/hazel/cmd/hazel@latest` works too. See [Installation](https://winebarrel.github.io/hazel/installation/).
 
 ## Quick start
 

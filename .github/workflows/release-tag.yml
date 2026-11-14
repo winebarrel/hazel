@@ -1,0 +1,111 @@
+name: release-tag
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs on the merge of a release pull request. The merge commit message is
+  # "Merge pull request #N from owner/release-from-vX.Y.Z" followed by the
+  # pull request's title as it stood at the merge, "Release for vX.Y.Z".
+  # Merging the pull request is the decision to release: there is no approval
+  # step after it.
+  version:
+    if: contains(github.event.head_commit.message, '/release-from-')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      latest: ${{ steps.version.outputs.latest }}
+    steps:
+      - id: version
+        run: |
+          version=$(sed -n 's/^Release for v\([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p' <<<"$MESSAGE")
+          if [ -z "$version" ]; then
+            echo "::error::The release pull request's title is not \"Release for vX.Y.Z\""
+            exit 1
+          fi
+          # latest is empty before the first release.
+          latest=$(git ls-remote --tags --refs "https://github.com/$GITHUB_REPOSITORY" 'v[0-9]*' | sed 's|.*refs/tags/v||' | sort -V | tail -n 1)
+          if [ "$(printf '%s\n' "${latest:-0.0.0}" "$version" | sort -V | tail -n 1)" != "$version" ] || [ "$version" = "$latest" ]; then
+            echo "::error::v$version is not newer than the latest tag v$latest"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "latest=$latest"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+
+  tag:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      # The App token pushes, so that the tag push starts release.yml.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+      # The release commit and the tag are made as the App's bot. They are not
+      # signed; the release assets are attested instead (release.yml).
+      - name: Set the committer
+        run: |
+          id=$(gh api "users/$SLUG%5Bbot%5D" --jq .id)
+          git config --global user.name "${SLUG}[bot]"
+          git config --global user.email "$id+${SLUG}[bot]@users.noreply.github.com"
+        env:
+          SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      # Rename [Unreleased] to the version and date in a commit, and tag it.
+      # The link definitions at the bottom of the file follow: [unreleased]
+      # compares the new tag with HEAD, and the version compares the latest
+      # tag with the new one, or lists the commits of the first release.
+      # Without that section main itself is tagged and the links stay as they
+      # are. One atomic push lands both or neither, so a failed run leaves main
+      # as it was and a re-run starts over.
+      - name: Commit, tag and push
+        run: |
+          sed -i "s/^## \[Unreleased\]\$/## [$VERSION] - $(TZ=Asia/Tokyo date +%Y-%m-%d)/" CHANGELOG.md
+          refs=()
+          if ! git diff --quiet; then
+            url=https://github.com/$GITHUB_REPOSITORY
+            if [ -n "$LATEST" ]; then
+              link="$url/compare/v$LATEST...v$VERSION"
+            else
+              link="$url/commits/v$VERSION"
+            fi
+            sed -i -e "s|^\[unreleased\]: .*|[unreleased]: $url/compare/v$VERSION...HEAD|" \
+              -e "/^\[unreleased\]: /a [$VERSION]: $link" CHANGELOG.md
+            git commit -q -am "Release v$VERSION"
+            refs+=(HEAD:main)
+          fi
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push --atomic origin "${refs[@]}" "v$VERSION"
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          LATEST: ${{ needs.version.outputs.latest }}
+      # Point the release pull request's CHANGELOG link at the tag, which
+      # keeps showing the changelog as it was released, and its Changes
+      # link at the tag, since the release branch goes away.
+      - name: Pin the CHANGELOG and Changes links
+        run: |
+          number=$(sed -n '1s/^Merge pull request #\([0-9]\+\) .*/\1/p' <<<"$MESSAGE")
+          body=$(gh pr view "$number" --json body --jq .body)
+          body=${body//\/blob\/main\/CHANGELOG.md//blob/v$VERSION/CHANGELOG.md}
+          body=$(sed -E "s/\.\.\.release-from-v[0-9]+\.[0-9]+\.[0-9]+/...v$VERSION/g" <<<"$body")
+          gh pr edit "$number" --body "$body"
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+          VERSION: ${{ needs.version.outputs.version }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

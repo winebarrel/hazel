@@ -1,0 +1,128 @@
+name: release
+on:
+  push:
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+
+
+permissions:
+  contents: read
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    # GoReleaser publishes with the app token, so GITHUB_TOKEN only checks out
+    # and attests.
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      # GoReleaser writes the release here and the cask to the tap repository.
+      - id: app-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: hazel,homebrew-hazel
+          permission-contents: write
+      # The release notes link the release pull request, the nearest release
+      # merge before the tag on main. They also list the pull requests in its
+      # body, from "## Pull requests" on, with the backticks around each author
+      # dropped so that the release mentions them. The links above that section
+      # are left out: release-tag may still be pinning them when this runs.
+      - name: Find the release pull request
+        run: |
+          number=$(git log -1 --first-parent --format=%s -E \
+            --grep='^Merge pull request #[0-9]+ from [^ ]*/release-from-v' "$GITHUB_REF_NAME" |
+            sed -n 's/^Merge pull request #\([0-9]\+\) .*/\1/p')
+          if [ -z "$number" ]; then
+            echo "::error::No release pull request merge precedes $GITHUB_REF_NAME"
+            exit 1
+          fi
+          # The backticks are matched literally, not expanded.
+          # shellcheck disable=SC2016
+          prs=$(gh pr view "$number" --json body --jq .body |
+            sed -n '/^## Pull requests$/,$p' |
+            sed -E 's/^(- \[#[0-9]+\]\([^)]*\) .* by )`(@[^`]+)`$/\1\2/')
+          {
+            echo "RELEASE_PR=$number"
+            echo "RELEASE_PRS<<EOF_RELEASE_PRS"
+            echo "$prs"
+            echo "EOF_RELEASE_PRS"
+          } >> "$GITHUB_ENV"
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean --release-notes-tmpl .github/release-notes.md.tmpl
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+      # checksums.txt lists every release asset but itself, so attest the
+      # listed assets and then checksums.txt.
+      - name: Attest release assets
+        uses: actions/attest@v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+      - name: Attest checksums.txt
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/checksums.txt
+      # Homebrew and the packages install the binary out of the archive, so
+      # attest the binary as well for a check of the installed hazel.
+      - name: Attest binaries
+        uses: actions/attest@v4.2.2
+        with:
+          subject-path: |
+            dist/*/hazel
+            dist/*/hazel.exe
+
+  # The demo image bundles the released hazel.
+  demo:
+    uses: ./.github/workflows/demo.yml
+    permissions:
+      contents: read
+      packages: write
+
+  # Tell the person who merged the release pull request how the release
+  # went, with a comment on that pull request that mentions them.
+  notify:
+    if: always()
+    runs-on: ubuntu-latest
+    needs:
+      - goreleaser
+      - demo
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment on the release pull request
+        run: |
+          found=$(gh pr list --label release --state merged --search "\"Release for $TAG\" in:title" --json number,title,mergedBy \
+            --jq ".[] | select(.title == \"Release for $TAG\") | \"\(.number) \(.mergedBy.login)\"")
+          read -r number merger <<<"$found"
+          if [ -z "$number" ]; then
+            echo "::warning::No merged release pull request is titled \"Release for $TAG\""
+            exit 0
+          fi
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "- \(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -z "$failed" ]; then
+            body="@$merger $TAG is released."
+          else
+            body="@$merger The release of $TAG did not finish."$'\n\n'"$failed"
+          fi
+          body+=$'\n\n'"$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
+          gh pr comment "$number" --body "$body"
+        env:
+          TAG: ${{ github.ref_name }}
+          NEEDS: ${{ toJSON(needs) }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

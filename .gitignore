@@ -41,3 +41,9 @@ go.work.sum
 # The demo recordings made by make demo
 /demo.gif
 /demo.webm
+
+# The goreleaser output
+/dist/
+
+# Python bytecode of hooks.py, written by mkdocs build
+__pycache__/

@@ -39,6 +39,7 @@ make test  # go test -v ./... $(TEST_OPTS)
 make lint  # golangci-lint run
 make fix   # golangci-lint run --fix (auto-fix lint errors)
 make test-realworld # round-trip the real-world SQLite schemas in realworld.mk (needs network; see REALWORLD-TESTS.md)
+make test-changelog # test scripts/merge-changelog.sh, the CHANGELOG.md merge driver
 ```
 
 - The tests need no database server. CI runs them on Linux, macOS and Windows, with `-coverpkg=./...`, since the CLI tests in `cmd/hazel` cover `cmd/command`.
@@ -55,6 +56,7 @@ make test-realworld # round-trip the real-world SQLite schemas in realworld.mk (
 - `desired/` - Loads the desired schema: runs the CREATE statements of the schema files in `:memory:` and reads them back with `catalog`
 - `format/` - Lays out a CREATE statement, moving only the whitespace and the quotes of names that do not need them, and a schema file for `hazel fmt`
 - `model/` - The schema objects hazel compares (tables, columns, constraints, indexes, views, triggers)
+- `scripts/merge-changelog.sh` - The CHANGELOG.md merge driver that `.github/workflows/changelog-merge.yml` runs; `test/changelog/` tests it
 - `test/realworld/` - The real-world schema tests: the runner and the loader (see REALWORLD-TESTS.md)
 - `parser/` - Tokenizer, statement splitter, statement classification, CREATE TABLE parsing (what PRAGMAs do not report), identifier quoting and token comparison for schema files
 
@@ -69,6 +71,10 @@ make test-realworld # round-trip the real-world SQLite schemas in realworld.mk (
    - Consider whether similar issues exist elsewhere in the codebase.
    - Run `make lint` to check for lint errors.
    - Add a `CHANGELOG.md` entry under `## [Unreleased]` when the change is one a user of hazel would notice, creating that section above the newest release if it is not there. The release fills in the version and date, and the link definitions at the bottom of the file; leave them alone. What they cannot see gets no entry: a test or fixture, documentation, a dependency bump, or a refactor that leaves behavior alone.
+
+## Releasing
+
+A push to main keeps one draft pull request open, titled "Release for vX.Y.Z" (`release-pr.yml`). To release, change the title to the next version and mark it ready for review; `release-title.yml` checks that the version follows the latest tag. Merging it renames `[Unreleased]` in `CHANGELOG.md` to the version and date, and tags the commit (`release-tag.yml`). The tag builds and publishes the release with GoReleaser, attests its assets, builds the demo image (`release.yml`) and publishes the docs site (`docs.yml`). The workflows act through a GitHub App, whose client ID and private key are in `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY`.
 
 ## Pull request labels
 
