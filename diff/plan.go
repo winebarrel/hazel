@@ -14,10 +14,21 @@ type Plan struct {
 	// columns, as "table  name" and "column table.name".
 	DataLoss []string
 	// Rebuilds lists the tables the plan rebuilds, which copies every row.
-	Rebuilds []string
+	Rebuilds []Rebuild
 	// Groups are the statements in the order they run, grouped by the
 	// comment that explains them.
 	Groups []Group
+}
+
+// Rebuild is a table that the plan rebuilds, with the changes that the
+// rebuild makes.
+type Rebuild struct {
+	Table   string
+	Changes []string
+}
+
+func (r Rebuild) String() string {
+	return r.Table + " (" + strings.Join(r.Changes, "; ") + ")"
 }
 
 // Group is a run of statements that share a comment. Comment is "" for
@@ -71,7 +82,7 @@ func (p *Plan) String() string {
 // builder collects the statements of a plan by phase.
 type builder struct {
 	dataLoss []string
-	rebuilds []string
+	rebuilds []Rebuild
 	phases   [phaseCount][]item
 }
 

@@ -117,7 +117,11 @@ CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age TEXT, legacy TEXT);
 INSERT INTO users VALUES (1, 'alice', '30', 'x'), (2, 'bob', NULL, 'y');
 `)
 	plan := applyPlan(t, conn, `CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER, email TEXT DEFAULT 'none');`)
-	assert.Equal(t, []string{"users"}, plan.Rebuilds)
+	assert.Equal(t, []diff.Rebuild{{
+		Table:   "users",
+		Changes: []string{"NOT NULL of name", "type of age", "drops column legacy", "adds column email"},
+	}}, plan.Rebuilds)
+	assert.Equal(t, "users (NOT NULL of name; type of age; drops column legacy; adds column email)", plan.Rebuilds[0].String())
 
 	rows, err := conn.Query(`SELECT id, name, age, typeof(age), email FROM users ORDER BY id`)
 	require.NoError(t, err)

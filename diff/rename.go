@@ -19,6 +19,9 @@ import (
 func (d *differ) renames() error {
 	var stmts []string
 	for key, des := range d.des.Tables.All() {
+		if d.exclude(des.Name) {
+			continue
+		}
 		table := des.Name
 		cur, ok := d.cur.Tables.GetOk(key)
 		if des.RenamedFrom != "" {

@@ -3,6 +3,7 @@ module github.com/winebarrel/hazel
 go 1.27.3
 
 require (
+	github.com/alecthomas/kong v1.17.0
 	github.com/stretchr/testify v1.12.1
 	github.com/winebarrel/orderedmap/v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
