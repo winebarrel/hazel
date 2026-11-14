@@ -100,7 +100,7 @@ func TestNoCreate(t *testing.T) {
 			assert.Equal(t, 1, code)
 			assert.Equal(t, "hazel: error: database does not exist: "+filepath.Join(dir, "app.db")+"\n", errOut)
 			_, err := os.Stat("app.db")
-			assert.ErrorIs(t, err, os.ErrNotExist)
+			require.ErrorIs(t, err, os.ErrNotExist)
 
 			t.Setenv("HAZEL_NO_CREATE", "true")
 			_, _, code = hazel(t, cmd, "app.db", "schema.sql")
