@@ -12,6 +12,7 @@ import (
 	"github.com/winebarrel/hazel/catalog"
 	"github.com/winebarrel/hazel/db"
 	"github.com/winebarrel/hazel/diff"
+	"github.com/winebarrel/hazel/model"
 	"github.com/winebarrel/hazel/parser"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -21,9 +22,10 @@ import (
 type Apply struct {
 	Filter
 	Rebuild
-	BusyTimeout time.Duration `default:"5s" env:"HAZEL_BUSY_TIMEOUT" placeholder:"DURATION" help:"How long to wait for the write lock, as a Go duration such as 5s."`
-	DB          string        `arg:"" help:"The database file, as the sqlite3 shell takes it. A file that does not exist is created."`
-	Files       []string      `arg:"" name:"schema-file" help:"The schema files."`
+	BusyTimeout         time.Duration `default:"5s" env:"HAZEL_BUSY_TIMEOUT" placeholder:"DURATION" help:"How long to wait for the write lock, as a Go duration such as 5s."`
+	SkipForeignKeyCheck bool          `env:"HAZEL_SKIP_FOREIGN_KEY_CHECK" help:"Do not run PRAGMA foreign_key_check before the commit. For a database that holds rows breaking a foreign key from before."`
+	DB                  string        `arg:"" help:"The database file, as the sqlite3 shell takes it. A file that does not exist is created."`
+	Files               []string      `arg:"" name:"schema-file" help:"The schema files."`
 }
 
 // Validate checks --busy-timeout and the patterns. kong reports an error
@@ -43,7 +45,9 @@ func (cmd *Apply) Validate() error {
 //  3. read the database and compute the plan under the lock;
 //  4. run the DDL, then the statements marked with -- hazel:execute whose
 //     condition holds, evaluated after the DDL;
-//  5. PRAGMA foreign_key_check, and roll back on a violation;
+//  5. PRAGMA foreign_key_check, and roll back on a violation, unless
+//     --skip-foreign-key-check is given; a table marked with
+//     -- hazel:skip-foreign-key-check is left out of it;
 //  6. COMMIT.
 //
 // A statement that fails rolls everything back.
@@ -153,8 +157,10 @@ func (cmd *Apply) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 		return nil
 	}
 
-	if err := foreignKeyCheck(ctx, conn); err != nil {
-		return err
+	if !cmd.SkipForeignKeyCheck {
+		if err := foreignKeyCheck(ctx, conn, want.Schema); err != nil {
+			return err
+		}
 	}
 	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
 		return err
@@ -171,31 +177,28 @@ func isBusy(err error) bool {
 
 // foreignKeyCheck fails when a row refers to a parent row that is not
 // there. foreign_keys is off while the plan runs, so nothing else checks.
-func foreignKeyCheck(ctx context.Context, conn *sql.Conn) error {
-	rows, err := conn.QueryContext(ctx, "PRAGMA foreign_key_check")
+// The check covers the whole database, except the tables marked with
+// -- hazel:skip-foreign-key-check.
+func foreignKeyCheck(ctx context.Context, conn *sql.Conn, want *model.Schema) error {
+	skip := []any{}
+	for t := range want.Tables.Values() {
+		if t.SkipForeignKeyCheck {
+			skip = append(skip, t.Name)
+		}
+	}
+	in := strings.TrimSuffix(strings.Repeat("?, ", len(skip)), ", ")
+	var violations sql.NullString
+	err := conn.QueryRowContext(ctx, `
+		SELECT group_concat(
+		  "table" || coalesce(' (rowid ' || rowid || ')', '') || ' refers to a missing row of ' || parent,
+		  '; ')
+		FROM pragma_foreign_key_check
+		WHERE "table" COLLATE NOCASE NOT IN (`+in+`)`, skip...).Scan(&violations)
 	if err != nil {
 		return err
 	}
-	defer rows.Close() //nolint:errcheck
-	var violations []string
-	for rows.Next() {
-		var table, parent string
-		var rowid sql.NullInt64
-		var fkid int
-		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
-			return err
-		}
-		v := table + " refers to a missing row of " + parent
-		if rowid.Valid {
-			v = fmt.Sprintf("%s (rowid %d) refers to a missing row of %s", table, rowid.Int64, parent)
-		}
-		violations = append(violations, v)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if len(violations) > 0 {
-		return fmt.Errorf("foreign key violations, rolled back: %s", strings.Join(violations, "; "))
+	if violations.Valid {
+		return fmt.Errorf("foreign key violations, rolled back: %s", violations.String)
 	}
 	return nil
 }

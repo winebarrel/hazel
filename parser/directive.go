@@ -17,9 +17,10 @@ type Directive struct {
 
 // The directives.
 const (
-	RenamedFrom = "renamed-from"
-	Ignore      = "ignore"
-	Execute     = "execute"
+	RenamedFrom         = "renamed-from"
+	SkipForeignKeyCheck = "skip-foreign-key-check"
+	Ignore              = "ignore"
+	Execute             = "execute"
 )
 
 // directive returns the directive that the token is, if it is one: a "--"
@@ -56,7 +57,7 @@ func directives(tokens []Token, afterSeparator bool) ([]Directive, error) {
 				"%s%s is on the line of what comes before it; write it on a line of its own", DirectivePrefix, d.Name)}
 		}
 		switch d.Name {
-		case RenamedFrom, Ignore, Execute:
+		case RenamedFrom, Ignore, Execute, SkipForeignKeyCheck:
 			ds = append(ds, d)
 		default:
 			return nil, &Error{Line: d.Line, Err: fmt.Errorf("unknown directive: %s%s", DirectivePrefix, d.Name)}

@@ -189,6 +189,7 @@ CREATE INDEX legacy_x ON legacy (x);
 -- hazel:ignore
 CREATE VIEW v AS SELECT x FROM legacy;
 CREATE TRIGGER tr AFTER INSERT ON legacy BEGIN SELECT 1; END;
+-- hazel:skip-foreign-key-check
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 -- hazel:execute SELECT NOT EXISTS (SELECT 1 FROM settings)
 INSERT INTO settings VALUES ('version', '1');
@@ -210,16 +211,18 @@ UPDATE settings SET value = '2';
 	assert.True(t, s.Tables.Get("docs").Ignored)
 	assert.True(t, s.Views.Get("v").Ignored)
 	assert.False(t, s.Tables.Get("settings").Ignored)
+	assert.True(t, s.Tables.Get("settings").SkipForeignKeyCheck)
+	assert.False(t, members.SkipForeignKeyCheck)
 
 	// The statements marked with execute are kept, not run, and not warned
 	// about.
 	assert.Empty(t, result.Warnings)
 	assert.Equal(t, []desired.Execute{
 		{
-			File: "schema.sql", Line: 17, SQL: "INSERT INTO settings VALUES ('version', '1');",
+			File: "schema.sql", Line: 18, SQL: "INSERT INTO settings VALUES ('version', '1');",
 			Condition: "SELECT NOT EXISTS (SELECT 1 FROM settings)",
 		},
-		{File: "schema.sql", Line: 19, SQL: "UPDATE settings SET value = '2';"},
+		{File: "schema.sql", Line: 20, SQL: "UPDATE settings SET value = '2';"},
 	}, result.Executes)
 }
 
@@ -236,6 +239,8 @@ func TestLoadDirectiveErrors(t *testing.T) {
 		// An index or a trigger is ignored with its table or view.
 		{"ignore on an index", "CREATE TABLE t (a);\n-- hazel:ignore\nCREATE INDEX i ON t (a);", "schema.sql:2: hazel:ignore is for a table, a view or a virtual table"},
 		{"ignore on a trigger", "CREATE TABLE t (a);\n-- hazel:ignore\nCREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END;", "schema.sql:2: hazel:ignore is for a table, a view or a virtual table"},
+		{"skip-foreign-key-check on a view", "CREATE TABLE t (a);\n-- hazel:skip-foreign-key-check\nCREATE VIEW v AS SELECT a FROM t;", "schema.sql:2: hazel:skip-foreign-key-check is for a table"},
+		{"skip-foreign-key-check on a virtual table", "-- hazel:skip-foreign-key-check\nCREATE VIRTUAL TABLE f USING fts5(a);", "schema.sql:1: hazel:skip-foreign-key-check is for a table"},
 		{"renamed-from on an index", "CREATE TABLE t (a);\n-- hazel:renamed-from j\nCREATE INDEX i ON t (a);", "schema.sql:2: hazel:renamed-from is for a table or a column"},
 		{"renamed-from without a name", "-- hazel:renamed-from\nCREATE TABLE t (a);", "schema.sql:1: hazel:renamed-from needs one name, the old one, as it is written in SQL"},
 		{"column renamed-from without a name", "CREATE TABLE t (\n  -- hazel:renamed-from\n  a\n);", "schema.sql:2: hazel:renamed-from needs one name, the old one, as it is written in SQL"},

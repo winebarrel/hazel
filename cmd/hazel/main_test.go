@@ -644,3 +644,61 @@ func TestApplyUnreadableDatabase(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errOut, "view v: ")
 }
+
+func TestApplyExistingForeignKeyViolation(t *testing.T) {
+	const tables = `
+CREATE TABLE p (id INTEGER PRIMARY KEY);
+CREATE TABLE s (k TEXT PRIMARY KEY, v TEXT);
+`
+	workdir(t, map[string]string{
+		"schema.sql": tables + `
+CREATE TABLE c (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE TABLE d (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE INDEX s_v ON s (v);
+`,
+		"skip_c.sql": tables + `
+-- hazel:skip-foreign-key-check
+CREATE TABLE c (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE TABLE d (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE INDEX s_v ON s (v);
+`,
+	})
+	newDB := func(t *testing.T, extra string) {
+		t.Helper()
+		require.NoError(t, os.RemoveAll("app.db"))
+		createDB(t, "app.db", tables+`
+CREATE TABLE c (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE TABLE d (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+INSERT INTO c VALUES (1, 99);
+`+extra)
+	}
+
+	// The violation was there before, and still fails the apply.
+	newDB(t, "")
+	_, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "foreign key violations, rolled back: c (rowid 1) refers to a missing row of p")
+	assert.Equal(t, "0", query(t, "app.db", "SELECT count(*) FROM sqlite_schema WHERE name = 's_v'"))
+
+	// --skip-foreign-key-check runs no check.
+	out, _, code := hazel(t, "apply", "--skip-foreign-key-check", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "-- Applied 1 statement\n")
+
+	newDB(t, "")
+	t.Setenv("HAZEL_SKIP_FOREIGN_KEY_CHECK", "true")
+	_, _, code = hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	t.Setenv("HAZEL_SKIP_FOREIGN_KEY_CHECK", "false")
+
+	// The directive leaves c out of the check, and only c.
+	newDB(t, "")
+	_, _, code = hazel(t, "apply", "app.db", "skip_c.sql")
+	assert.Equal(t, 0, code)
+
+	newDB(t, "INSERT INTO d VALUES (1, 98);")
+	_, errOut, code = hazel(t, "apply", "app.db", "skip_c.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "foreign key violations, rolled back: d (rowid 1) refers to a missing row of p")
+	assert.NotContains(t, errOut, "c (rowid 1)")
+}

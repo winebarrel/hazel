@@ -39,6 +39,10 @@ type Table struct {
 	// RenamedFrom is the old name given by a -- hazel:renamed-from
 	// directive, or "". It is set on the desired side only.
 	RenamedFrom string
+	// SkipForeignKeyCheck reports a -- hazel:skip-foreign-key-check
+	// directive: apply does not fail on the rows of this table that break a
+	// foreign key. It is set on the desired side only.
+	SkipForeignKeyCheck bool
 	// Ignored reports a -- hazel:ignore directive: the table, and its
 	// indexes and triggers, are not created, changed or dropped. It is set on the desired side only.
 	Ignored bool
