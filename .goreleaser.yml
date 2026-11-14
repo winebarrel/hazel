@@ -1,0 +1,55 @@
+version: 2
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - main: ./cmd/hazel
+    binary: hazel
+    # modernc.org/sqlite is pure Go, so every target builds without cgo.
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X main.version={{.Version}}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+checksum:
+  name_template: "checksums.txt"
+homebrew_casks:
+  - repository:
+      owner: winebarrel
+      name: homebrew-hazel
+    # Leave the committer out of the API call so GitHub signs the tap commit
+    # as the release app.
+    commit_author:
+      use_github_app_token: true
+    homepage: https://github.com/winebarrel/hazel
+    description: hazel is a declarative schema management tool for SQLite.
+    license: CC0-1.0
+    binaries: [hazel]
+    # The binary is not notarized, so take it out of quarantine, as
+    # pistachio's cask does. Homebrew 7 deprecates the postflight block that
+    # hooks.post.install renders, so emit postflight_steps via custom_block
+    # instead. goreleaser templates the whole cask, so {{staged_path}} is
+    # written as a template producing that literal, expanded by Homebrew at
+    # install time.
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/hazel"]
+        end
+      end
+nfpms:
+  - file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    homepage: https://github.com/winebarrel/hazel
+    description: hazel is a declarative schema management tool for SQLite.
+    license: CC0-1.0
+    maintainer: "Genki Sugawara <sugawara@winebarrel.jp>"
+    formats:
+      - apk
+      - deb
+      - rpm

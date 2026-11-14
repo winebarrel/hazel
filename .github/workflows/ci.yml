@@ -33,6 +33,12 @@ jobs:
             exit "$status"
           fi
 
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: make test-changelog
+
   tidy:
     runs-on: ubuntu-latest
     steps:

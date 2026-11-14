@@ -33,6 +33,9 @@ theme:
 plugins:
   - search
 
+hooks:
+  - hooks.py
+
 extra_css:
   - stylesheets/extra.css
 
@@ -46,6 +49,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - installation.md
   - Getting started: getting-started.md
   - Guides:
       - guides/renaming.md
@@ -61,3 +65,4 @@ nav:
       - reference/directives.md
       - reference/configuration.md
       - reference/exit-status.md
+  - Changelog: changelog.md

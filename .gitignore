@@ -41,3 +41,6 @@ go.work.sum
 # The demo recordings made by make demo
 /demo.gif
 /demo.webm
+
+# The goreleaser output
+/dist/
