@@ -2,4 +2,9 @@ init: |
   CREATE TABLE t (a, b, UNIQUE (a));
 desired: |
   CREATE TABLE t (a, b, UNIQUE (b));
-error: "table t: changing a UNIQUE constraint is not supported yet"
+plan: |
+  -- table rebuild: t (UNIQUE constraint)
+  CREATE TABLE new_t (a, b, UNIQUE (b));
+  INSERT INTO new_t (a, b) SELECT a, b FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

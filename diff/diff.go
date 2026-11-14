@@ -1,7 +1,6 @@
 package diff
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/winebarrel/hazel/model"
@@ -40,19 +39,22 @@ const (
 // as it runs them.
 //
 // Definitions are compared with parser.TokensEqual, and constraints by their
-// content, not their names. The changes that need a table rebuild are not
-// supported yet and return an error: a column's type, DEFAULT, COLLATE or
-// generated expression, the PRIMARY KEY, a UNIQUE constraint, adding or
-// changing a FOREIGN KEY, dropping an unnamed CHECK or FOREIGN KEY, STRICT,
-// WITHOUT ROWID and AUTOINCREMENT.
+// content, not their names. A table that needs a change ALTER TABLE cannot
+// make is rebuilt (see rebuild), and Plan.Rebuilds lists it: a column's type,
+// DEFAULT, COLLATE or generated expression, the PRIMARY KEY, a UNIQUE
+// constraint, adding or changing a FOREIGN KEY, dropping an unnamed CHECK or
+// FOREIGN KEY, STRICT, WITHOUT ROWID, AUTOINCREMENT, and adding a STORED
+// column or a column with a non-constant DEFAULT. The rebuild makes the
+// table's other changes too, so it gets no ALTER.
 func Diff(current, desired *model.Schema) (*Plan, error) {
-	d := &differ{cur: current, des: desired, dependencies: map[string]string{}, recreatedViews: map[string]bool{}}
+	d := &differ{
+		cur: current, des: desired,
+		dependencies: map[string]string{}, recreatedViews: map[string]bool{}, rebuilt: map[string]bool{},
+	}
 	if err := d.renames(); err != nil {
 		return nil, err
 	}
-	if err := d.tables(); err != nil {
-		return nil, err
-	}
+	d.tables()
 	d.indexes()
 	d.views()
 	d.triggers()
@@ -72,6 +74,9 @@ type differ struct {
 	// when the plan rechecks the schema. A renamed table is not there: SQLite
 	// rewrites what names it.
 	dependencies map[string]string
+	// rebuilt holds the keys of the tables that are rebuilt. DROP TABLE drops
+	// their indexes and triggers.
+	rebuilt map[string]bool
 	// recreatedViews holds the keys of the views that are dropped and created
 	// again. DROP VIEW drops the triggers on the view as well.
 	recreatedViews map[string]bool
@@ -81,7 +86,7 @@ func q(name string) string {
 	return parser.QuoteIdent(name)
 }
 
-func (d *differ) tables() error {
+func (d *differ) tables() {
 	for key, cur := range d.cur.Tables.All() {
 		des, ok := d.des.Tables.GetOk(key)
 		switch {
@@ -96,9 +101,7 @@ func (d *differ) tables() error {
 				d.b.dataLoss = append(d.b.dataLoss, "table  "+cur.Name)
 			}
 		default:
-			if err := d.alterTable(cur, des); err != nil {
-				return err
-			}
+			d.alterTable(cur, des)
 		}
 	}
 	for key, des := range d.des.Tables.All() {
@@ -106,13 +109,9 @@ func (d *differ) tables() error {
 			d.b.add(createTables, "", des.SQL)
 		}
 	}
-	return nil
 }
 
-func (d *differ) alterTable(cur, des *model.Table) error {
-	unsupported := func(what string) error {
-		return fmt.Errorf("table %s: changing %s is not supported yet", des.Name, what)
-	}
+func (d *differ) alterTable(cur, des *model.Table) {
 	var added []string
 	for key := range des.Columns.Keys() {
 		if !cur.Columns.Has(key) {
@@ -128,46 +127,82 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 	}
 	desFKs := slices.DeleteFunc(slices.Clone(des.ForeignKeys), func(fk *model.ForeignKey) bool { return inAdded(fk.Column) })
 	desChecks := slices.DeleteFunc(slices.Clone(des.Checks), func(c *model.Check) bool { return inAdded(c.Column) })
-	switch {
-	case cur.Strict != des.Strict:
-		return unsupported("STRICT")
-	case cur.WithoutRowid != des.WithoutRowid:
-		return unsupported("WITHOUT ROWID")
-	case cur.Autoincrement != des.Autoincrement:
-		return unsupported("AUTOINCREMENT")
-	case !indexColumnsEqual(cur.PrimaryKey, des.PrimaryKey):
-		return unsupported("the PRIMARY KEY")
-	case !uniquesEqual(cur.Uniques, des.Uniques):
-		return unsupported("a UNIQUE constraint")
-	}
 
+	// needs lists the changes that ALTER TABLE cannot make, and changes all
+	// the changes, for the comment of a rebuild.
+	var needs, changes []string
+	need := func(what string) {
+		needs = append(needs, what)
+		changes = append(changes, what)
+	}
+	if cur.Strict != des.Strict {
+		need("STRICT")
+	}
+	if cur.WithoutRowid != des.WithoutRowid {
+		need("WITHOUT ROWID")
+	}
+	if cur.Autoincrement != des.Autoincrement {
+		need("AUTOINCREMENT")
+	}
+	if !indexColumnsEqual(cur.PrimaryKey, des.PrimaryKey) {
+		need("PRIMARY KEY")
+	}
+	if !uniquesEqual(cur.Uniques, des.Uniques) {
+		need("UNIQUE constraint")
+	}
 	// A named FOREIGN KEY or CHECK that is gone is dropped with DROP
 	// CONSTRAINT, and a new CHECK is added with ADD CHECK. An unnamed one
 	// cannot be dropped that way, and a FOREIGN KEY cannot be added.
 	dropFKs, addFKs := unmatched(cur.ForeignKeys, desFKs, foreignKeyEqual)
 	dropChecks, addChecks := unmatched(cur.Checks, desChecks, checkEqual)
-	if len(addFKs) > 0 || slices.ContainsFunc(dropFKs, func(fk *model.ForeignKey) bool { return fk.Name == "" }) {
-		return unsupported("a FOREIGN KEY constraint")
+	switch {
+	case len(addFKs) > 0 || slices.ContainsFunc(dropFKs, func(fk *model.ForeignKey) bool { return fk.Name == "" }):
+		need("FOREIGN KEY constraint")
+	case len(dropFKs) > 0:
+		changes = append(changes, "FOREIGN KEY constraint")
 	}
-	if slices.ContainsFunc(dropChecks, func(c *model.Check) bool { return c.Name == "" }) {
-		return unsupported("a CHECK constraint")
+	switch {
+	case slices.ContainsFunc(dropChecks, func(c *model.Check) bool { return c.Name == "" }):
+		need("CHECK constraint")
+	case len(dropChecks) > 0 || len(addChecks) > 0:
+		changes = append(changes, "CHECK constraint")
 	}
 
 	var dropColumns, notNull []string
 	for key, c := range cur.Columns.All() {
 		dc, ok := des.Columns.GetOk(key)
-		switch {
-		case !ok:
+		if !ok {
 			dropColumns = append(dropColumns, c.Name)
-		case !columnEqual(c, dc):
-			return unsupported("column " + dc.Name)
-		case c.NotNull != dc.NotNull:
+			changes = append(changes, "drops column "+c.Name)
+			continue
+		}
+		for _, what := range columnChanges(c, dc) {
+			need(what + " of " + dc.Name)
+		}
+		if c.NotNull != dc.NotNull {
 			change := "DROP NOT NULL"
 			if dc.NotNull {
 				change = "SET NOT NULL"
 			}
 			notNull = append(notNull, "ALTER COLUMN "+q(c.Name)+" "+change)
+			changes = append(changes, "NOT NULL of "+dc.Name)
 		}
+	}
+	for _, key := range added {
+		c := des.Columns.Get(key)
+		switch {
+		case c.Generated == model.GeneratedStored:
+			need("adds STORED column " + c.Name)
+		case c.Default != nil && !isConstant(*c.Default):
+			need("adds column " + c.Name + " with a non-constant DEFAULT")
+		default:
+			changes = append(changes, "adds column "+c.Name)
+		}
+	}
+
+	if len(needs) > 0 {
+		d.rebuild(cur, des, changes)
+		return
 	}
 
 	// A CHECK or a FOREIGN KEY that uses a column must be dropped before the
@@ -201,7 +236,53 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		}
 		d.b.add(alterTables, "", alter+"ADD "+constraint+"CHECK ("+c.Expr+")")
 	}
-	return nil
+}
+
+// columnChanges lists what differs between two columns that ALTER TABLE
+// cannot change. NOT NULL is not among them: ALTER COLUMN changes it.
+func columnChanges(a, b *model.Column) []string {
+	var changes []string
+	if !sqlEqual(a.Type, b.Type) {
+		changes = append(changes, "type")
+	}
+	if !ptrEqual(a.Default, b.Default) {
+		changes = append(changes, "DEFAULT")
+	}
+	if !parser.EqualFold(collation(a), collation(b)) {
+		changes = append(changes, "COLLATE")
+	}
+	if a.Generated != b.Generated || !sqlEqual(a.GeneratedExpr, b.GeneratedExpr) {
+		changes = append(changes, "generated expression")
+	}
+	return changes
+}
+
+// isConstant reports whether ADD COLUMN accepts the DEFAULT on a table with
+// rows: a literal, a signed number, NULL, TRUE, FALSE or a word, bare or in
+// double quotes (SQLite takes it for a string), in any number of
+// parentheses. sqlite3ValueFromExpr, which ADD COLUMN uses, can
+// give a value for those and not for an expression, a function or
+// CURRENT_TIME, CURRENT_DATE and CURRENT_TIMESTAMP.
+func isConstant(dflt string) bool {
+	tokens := statement(dflt).Significant()
+	for len(tokens) >= 2 && tokens[0].IsPunct("(") && tokens[len(tokens)-1].IsPunct(")") {
+		tokens = tokens[1 : len(tokens)-1]
+	}
+	if len(tokens) == 2 && (tokens[0].IsPunct("+") || tokens[0].IsPunct("-")) && tokens[1].Kind == parser.Number {
+		return true
+	}
+	if len(tokens) != 1 {
+		return false
+	}
+	switch t := tokens[0]; t.Kind {
+	case parser.Number, parser.String, parser.Blob:
+		return true
+	case parser.QuotedIdent:
+		return true
+	case parser.Ident:
+		return !t.IsKeyword("CURRENT_TIME") && !t.IsKeyword("CURRENT_DATE") && !t.IsKeyword("CURRENT_TIMESTAMP")
+	}
+	return false
 }
 
 // columnDefinitions returns each column definition of a CREATE TABLE, keyed
@@ -221,6 +302,12 @@ func (d *differ) indexes() {
 	for key, cur := range d.cur.Indexes.All() {
 		des, ok := d.des.Indexes.GetOk(key)
 		switch {
+		case d.rebuilt[model.Key(cur.Table)]:
+			// The index goes with the table, and an ignored one is created
+			// again as it is.
+			if ok && des.Ignored {
+				d.b.add(createIndexes, "", cur.SQL)
+			}
 		case ok && des.Ignored:
 		case !ok:
 			// An index goes with its table when the table is dropped.
@@ -233,7 +320,10 @@ func (d *differ) indexes() {
 		}
 	}
 	for key, des := range d.des.Indexes.All() {
-		if !d.cur.Indexes.Has(key) && !des.Ignored {
+		if des.Ignored {
+			continue
+		}
+		if !d.cur.Indexes.Has(key) || d.rebuilt[model.Key(des.Table)] {
 			d.b.add(createIndexes, "", des.SQL)
 		}
 	}
@@ -295,8 +385,8 @@ func (d *differ) triggers() {
 		des, ok := d.des.Triggers.GetOk(key)
 		table := model.Key(cur.Table)
 		// The DROP VIEW of a view created again drops its triggers, and so
-		// does the DROP TABLE of a table that is dropped.
-		dropped := d.recreatedViews[table] || !d.des.Tables.Has(table) && !d.des.Views.Has(table)
+		// does the DROP TABLE of a table that is dropped or rebuilt.
+		dropped := d.recreatedViews[table] || d.rebuilt[table] || !d.des.Tables.Has(table) && !d.des.Views.Has(table)
 		switch {
 		case ok && des.Ignored:
 			// An ignored trigger is left as it is: when its view is created
@@ -360,16 +450,6 @@ func statement(sql string) parser.Statement {
 
 func sqlEqual(a, b string) bool {
 	return parser.TokensEqual(statement(a).Tokens, statement(b).Tokens)
-}
-
-// columnEqual compares two columns except for NOT NULL, which ALTER COLUMN
-// changes.
-func columnEqual(a, b *model.Column) bool {
-	return sqlEqual(a.Type, b.Type) &&
-		ptrEqual(a.Default, b.Default) &&
-		parser.EqualFold(collation(a), collation(b)) &&
-		a.Generated == b.Generated &&
-		sqlEqual(a.GeneratedExpr, b.GeneratedExpr)
 }
 
 // collation returns the collation of a column. A column without COLLATE uses

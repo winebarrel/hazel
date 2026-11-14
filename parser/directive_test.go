@@ -132,3 +132,16 @@ func TestObjectName(t *testing.T) {
 		})
 	}
 }
+
+func TestWithObjectName(t *testing.T) {
+	tests := []struct{ src, want string }{
+		{"CREATE TABLE t (a)", `CREATE TABLE "new t" (a)`},
+		{"-- note\nCREATE TABLE IF NOT EXISTS main . \"t\" (a) STRICT", `CREATE TABLE IF NOT EXISTS "new t" (a) STRICT`},
+		{"CREATE TABLE \"t\"(a,b)", `CREATE TABLE "new t"(a,b)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			assert.Equal(t, tt.want, statement(t, tt.src).WithObjectName("new t"))
+		})
+	}
+}

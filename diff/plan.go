@@ -13,6 +13,8 @@ type Plan struct {
 	// DataLoss lists what the plan drops along with its data: tables and
 	// columns, as "table  name" and "column table.name".
 	DataLoss []string
+	// Rebuilds lists the tables the plan rebuilds, which copies every row.
+	Rebuilds []string
 	// Groups are the statements in the order they run, grouped by the
 	// comment that explains them.
 	Groups []Group
@@ -69,6 +71,7 @@ func (p *Plan) String() string {
 // builder collects the statements of a plan by phase.
 type builder struct {
 	dataLoss []string
+	rebuilds []string
 	phases   [phaseCount][]item
 }
 
@@ -86,6 +89,7 @@ const (
 	dropIndexes
 	renameTables
 	alterTables
+	rebuildTables
 	dropTables
 	createTables
 	createIndexes
@@ -112,7 +116,7 @@ func (b *builder) plan() *Plan {
 	slices.SortStableFunc(b.dataLoss, func(x, y string) int {
 		return cmp.Compare(lossOrder(x), lossOrder(y))
 	})
-	p := &Plan{DataLoss: b.dataLoss}
+	p := &Plan{DataLoss: b.dataLoss, Rebuilds: b.rebuilds}
 	for _, items := range b.phases {
 		for _, it := range items {
 			if n := len(p.Groups); n > 0 && p.Groups[n-1].Comment == it.comment {

@@ -1,0 +1,23 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age TEXT);
+# The renames run first, and the rebuild copies from the new names.
+desired: |
+  -- hazel:renamed-from users
+  CREATE TABLE members (
+    id INTEGER PRIMARY KEY,
+    -- hazel:renamed-from name
+    display_name TEXT,
+    age INTEGER
+  );
+plan: |
+  ALTER TABLE users RENAME TO members;
+  ALTER TABLE members RENAME COLUMN name TO display_name;
+  -- table rebuild: members (type of age)
+  CREATE TABLE new_members (
+    id INTEGER PRIMARY KEY,
+    display_name TEXT,
+    age INTEGER
+  );
+  INSERT INTO new_members (id, display_name, age) SELECT id, display_name, age FROM members;
+  DROP TABLE members;
+  ALTER TABLE new_members RENAME TO members;

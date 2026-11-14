@@ -2,4 +2,9 @@ init: |
   CREATE TABLE t (a INT);
 desired: |
   CREATE TABLE t (a INT) STRICT;
-error: "table t: changing STRICT is not supported yet"
+plan: |
+  -- table rebuild: t (STRICT)
+  CREATE TABLE new_t (a INT) STRICT;
+  INSERT INTO new_t (a) SELECT a FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

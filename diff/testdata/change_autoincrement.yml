@@ -2,4 +2,9 @@ init: |
   CREATE TABLE t (id INTEGER PRIMARY KEY);
 desired: |
   CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT);
-error: "table t: changing AUTOINCREMENT is not supported yet"
+plan: |
+  -- table rebuild: t (AUTOINCREMENT)
+  CREATE TABLE new_t (id INTEGER PRIMARY KEY AUTOINCREMENT);
+  INSERT INTO new_t (id) SELECT id FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

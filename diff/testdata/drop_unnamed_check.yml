@@ -3,4 +3,9 @@ init: |
 # DROP CONSTRAINT needs a name, so this needs a table rebuild.
 desired: |
   CREATE TABLE t (a);
-error: "table t: changing a CHECK constraint is not supported yet"
+plan: |
+  -- table rebuild: t (CHECK constraint)
+  CREATE TABLE new_t (a);
+  INSERT INTO new_t (a) SELECT a FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

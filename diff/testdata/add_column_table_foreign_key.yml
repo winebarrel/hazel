@@ -6,4 +6,9 @@ init: |
 desired: |
   CREATE TABLE users (id INTEGER PRIMARY KEY);
   CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users (id));
-error: "table posts: changing a FOREIGN KEY constraint is not supported yet"
+plan: |
+  -- table rebuild: posts (FOREIGN KEY constraint; adds column user_id)
+  CREATE TABLE new_posts (id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users (id));
+  INSERT INTO new_posts (id) SELECT id FROM posts;
+  DROP TABLE posts;
+  ALTER TABLE new_posts RENAME TO posts;

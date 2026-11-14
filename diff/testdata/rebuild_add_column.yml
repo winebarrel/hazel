@@ -1,0 +1,25 @@
+init: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY);
+  CREATE TABLE u (id INTEGER PRIMARY KEY);
+  CREATE TABLE v (id INTEGER PRIMARY KEY);
+# ADD COLUMN takes a constant DEFAULT only, and no STORED column; those need
+# a rebuild. A constant in parentheses is fine. ALTERs come before rebuilds.
+desired: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP, n INT DEFAULT (1 + 1));
+  CREATE TABLE u (id INTEGER PRIMARY KEY, g INT AS (id * 2) STORED);
+  CREATE TABLE v (id INTEGER PRIMARY KEY, a INT DEFAULT (-1), b TEXT DEFAULT ('x'), c DEFAULT NULL, d AS (id + 1));
+plan: |
+  ALTER TABLE v ADD COLUMN a INT DEFAULT (-1);
+  ALTER TABLE v ADD COLUMN b TEXT DEFAULT ('x');
+  ALTER TABLE v ADD COLUMN c DEFAULT NULL;
+  ALTER TABLE v ADD COLUMN d AS (id + 1);
+  -- table rebuild: t (adds column created_at with a non-constant DEFAULT; adds column n with a non-constant DEFAULT)
+  CREATE TABLE new_t (id INTEGER PRIMARY KEY, created_at TEXT DEFAULT CURRENT_TIMESTAMP, n INT DEFAULT (1 + 1));
+  INSERT INTO new_t (id) SELECT id FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;
+  -- table rebuild: u (adds STORED column g)
+  CREATE TABLE new_u (id INTEGER PRIMARY KEY, g INT AS (id * 2) STORED);
+  INSERT INTO new_u (id) SELECT id FROM u;
+  DROP TABLE u;
+  ALTER TABLE new_u RENAME TO u;
