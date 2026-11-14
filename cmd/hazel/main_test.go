@@ -1054,6 +1054,16 @@ func TestPager(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.Equal(t, plain, out)
 
+	// The pager starts on the first output: not for a command that writes
+	// nothing, nor for an error before any output.
+	t.Setenv("HAZEL_PAGER", "echo started; cat")
+	out, code = hazelToFile(t, "--pager", "fmt", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Empty(t, out)
+	out, code = hazelToFile(t, "--pager", "plan", ":memory:", "missing.sql")
+	assert.Equal(t, 1, code)
+	assert.Empty(t, out)
+
 	// A pager that cannot be started is an error.
 	t.Setenv("HAZEL_PAGER", "cat")
 	t.Setenv("PATH", "")
