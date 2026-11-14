@@ -1,4 +1,4 @@
-# hazel
+# ![hazel](assets/logo.webp)
 
 hazel is a declarative schema management tool for SQLite. The desired schema is written as CREATE statements in schema files. hazel compares it with the schema of a database and prints, or runs, the DDL that brings the database in line with the files.
 
