@@ -23,6 +23,25 @@ CREATE INDEX users_email ON users (email);
 
 `hazel dump` prints the schema of a database in the same form. Given back as the schema file, a dump plans clean.
 
+## Try it with Docker
+
+A demo image bundles hazel, sqlite3 and a sample database. It lets you try `hazel` without a local install:
+
+```bash
+docker run --rm -it ghcr.io/winebarrel/hazel-demo
+```
+
+The container starts a shell in `/demo`, where `demo.db` holds the schema of `current.sql`. Edit `desired.sql`, then run:
+
+```bash
+hazel plan  demo.db desired.sql                          # show the DDL diff
+hazel apply --allow-table-rebuild demo.db desired.sql    # apply the changes
+hazel plan  demo.db desired.sql                          # ...should now print -- No changes
+hazel dump  demo.db                                      # dump the current schema
+```
+
+The source for the image is under [`demo/`](https://github.com/winebarrel/hazel/tree/main/demo).
+
 ## Requirements
 
 hazel uses [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite), a SQLite driver written in Go, and needs no C compiler and no SQLite library. The SQLite version is the one the driver bundles, 3.53.0 or later; `hazel --version` prints it.
