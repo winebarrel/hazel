@@ -1,8 +1,7 @@
 init: |
   CREATE TABLE t (a INT, b);
   CREATE INDEX t_b ON t (b);
-# DROP TABLE takes the ignored index with it, so it is created again as
-# current has it.
+# DROP TABLE takes the ignored index with it, and it is not created again.
 desired: |
   CREATE TABLE t (a TEXT, b);
   -- hazel:ignore
@@ -13,4 +12,3 @@ plan: |
   INSERT INTO new_t (rowid, a, b) SELECT rowid, a, b FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;
-  CREATE INDEX t_b ON t (b);

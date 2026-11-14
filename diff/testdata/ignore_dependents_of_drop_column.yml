@@ -4,9 +4,9 @@ init: |
   CREATE VIEW v AS SELECT a, b FROM t;
   CREATE VIEW w AS SELECT a FROM v;
   CREATE TRIGGER tr AFTER INSERT ON other BEGIN SELECT * FROM v; END;
-# DROP COLUMN fails while w and tr read v, which is dropped. They are
-# ignored, so they are dropped and created again as current has them,
-# whatever desired says.
+# w and tr read v, which is dropped, so DROP COLUMN fails while they are
+# there. They are ignored, so nothing is planned for them, and the apply
+# fails: dropping the column means not ignoring what stands in its way.
 desired: |
   CREATE TABLE t (a);
   CREATE TABLE other (x);
@@ -21,11 +21,7 @@ plan: |
   --
   -- drop and create: definition changed
   DROP VIEW v;
-  -- drop and create: depends on v, which is created again
-  DROP VIEW w;
-  DROP TRIGGER tr;
   -- drop: removed from schema
   ALTER TABLE t DROP COLUMN b;
   CREATE VIEW v AS SELECT a FROM t;
-  CREATE VIEW w AS SELECT a FROM v;
-  CREATE TRIGGER tr AFTER INSERT ON other BEGIN SELECT * FROM v; END;
+apply_error: "error in view w"

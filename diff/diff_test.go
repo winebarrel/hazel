@@ -23,12 +23,14 @@ import (
 // diffTestCase is one fixture in testdata. init is run on an empty database
 // to give the current schema, and desired is loaded as the schema files.
 // Either plan, the expected plan, or error, a part of the expected error, is
-// given.
+// given. A plan is applied, and must leave nothing to do, unless apply_error
+// gives a part of the error the apply is expected to fail with.
 type diffTestCase struct {
-	Init    string `yaml:"init"`
-	Desired string `yaml:"desired"`
-	Plan    string `yaml:"plan"`
-	Error   string `yaml:"error"`
+	Init       string `yaml:"init"`
+	Desired    string `yaml:"desired"`
+	Plan       string `yaml:"plan"`
+	Error      string `yaml:"error"`
+	ApplyError string `yaml:"apply_error"`
 }
 
 func TestDiff(t *testing.T) {
@@ -59,8 +61,13 @@ func TestDiff(t *testing.T) {
 			// The plan applies, and leaves nothing to do.
 			for _, s := range plan.Statements() {
 				_, err := conn.Exec(s)
+				if tc.ApplyError != "" && err != nil {
+					assert.ErrorContains(t, err, tc.ApplyError)
+					return
+				}
 				require.NoError(t, err, s)
 			}
+			require.Empty(t, tc.ApplyError, "the apply did not fail")
 			applied, err := catalog.Read(ctx, conn)
 			require.NoError(t, err)
 			again, err := diff.Diff(applied, want)
