@@ -1,20 +1,15 @@
 init: |
   CREATE TABLE t (a, b);
-  CREATE TABLE other (x);
   CREATE VIEW v AS SELECT a, b FROM t;
   CREATE VIEW w AS SELECT a FROM v;
-  CREATE TRIGGER tr AFTER INSERT ON other BEGIN SELECT * FROM v; END;
-# w and tr read v, which is dropped, so DROP COLUMN fails while they are
-# there. They are ignored, so nothing is planned for them, and the apply
-# fails: dropping the column means not ignoring what stands in its way.
+# w reads v, which is dropped, so DROP COLUMN fails while w is there. w is
+# ignored, so nothing is planned for it, and the apply fails: dropping the
+# column means not ignoring what stands in its way.
 desired: |
   CREATE TABLE t (a);
-  CREATE TABLE other (x);
   CREATE VIEW v AS SELECT a FROM t;
   -- hazel:ignore
   CREATE VIEW w AS SELECT a AS z FROM v;
-  -- hazel:ignore
-  CREATE TRIGGER tr AFTER INSERT ON other BEGIN SELECT a FROM v; END;
 plan: |
   -- WARNING: the following will be dropped and their data will be lost:
   --   column t.b

@@ -114,6 +114,23 @@ type differ struct {
 	recreatedViews map[string]bool
 }
 
+// leftAlone reports whether nothing is planned for what belongs to the
+// table or view named name: it is excluded, or ignored in desired. An index
+// or a trigger goes with its table or view.
+func (d *differ) leftAlone(name string) bool {
+	if d.exclude(name) {
+		return true
+	}
+	key := model.Key(name)
+	if t, ok := d.des.Tables.GetOk(key); ok {
+		return t.Ignored
+	}
+	if v, ok := d.des.Views.GetOk(key); ok {
+		return v.Ignored
+	}
+	return false
+}
+
 func q(name string) string {
 	return parser.QuoteIdent(name)
 }
@@ -340,8 +357,7 @@ func (d *differ) indexes() {
 	for key, cur := range d.cur.Indexes.All() {
 		des, ok := d.des.Indexes.GetOk(key)
 		switch {
-		case d.exclude(cur.Table) || ok && d.exclude(des.Table):
-		case ok && des.Ignored:
+		case d.leftAlone(cur.Table) || ok && d.leftAlone(des.Table):
 		case d.rebuilt[model.Key(cur.Table)]:
 			// The index goes with the table.
 		case !ok:
@@ -355,7 +371,7 @@ func (d *differ) indexes() {
 		}
 	}
 	for key, des := range d.des.Indexes.All() {
-		if des.Ignored || d.exclude(des.Table) {
+		if d.leftAlone(des.Table) {
 			continue
 		}
 		if !d.cur.Indexes.Has(key) || d.rebuilt[model.Key(des.Table)] {
@@ -412,7 +428,7 @@ func (d *differ) recreateView(key, comment string) {
 func (d *differ) triggers() {
 	for key, cur := range d.cur.Triggers.All() {
 		des, ok := d.des.Triggers.GetOk(key)
-		if d.exclude(cur.Table) || ok && d.exclude(des.Table) || ok && des.Ignored {
+		if d.leftAlone(cur.Table) || ok && d.leftAlone(des.Table) {
 			continue
 		}
 		table := model.Key(cur.Table)
@@ -439,7 +455,7 @@ func (d *differ) triggers() {
 		}
 	}
 	for key, des := range d.des.Triggers.All() {
-		if !d.cur.Triggers.Has(key) && !des.Ignored && !d.exclude(des.Table) {
+		if !d.cur.Triggers.Has(key) && !d.leftAlone(des.Table) {
 			d.b.add(createTriggers, "", des.SQL)
 		}
 	}
