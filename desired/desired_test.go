@@ -185,11 +185,9 @@ CREATE TABLE members (
 CREATE TABLE legacy (x);
 -- hazel:ignore
 CREATE VIRTUAL TABLE docs USING fts5(body);
--- hazel:ignore
 CREATE INDEX legacy_x ON legacy (x);
 -- hazel:ignore
 CREATE VIEW v AS SELECT x FROM legacy;
--- hazel:ignore
 CREATE TRIGGER tr AFTER INSERT ON legacy BEGIN SELECT 1; END;
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
 -- hazel:execute SELECT NOT EXISTS (SELECT 1 FROM settings)
@@ -210,9 +208,7 @@ UPDATE settings SET value = '2';
 
 	assert.True(t, s.Tables.Get("legacy").Ignored)
 	assert.True(t, s.Tables.Get("docs").Ignored)
-	assert.True(t, s.Indexes.Get("legacy_x").Ignored)
 	assert.True(t, s.Views.Get("v").Ignored)
-	assert.True(t, s.Triggers.Get("tr").Ignored)
 	assert.False(t, s.Tables.Get("settings").Ignored)
 
 	// The statements marked with execute are kept, not run, and not warned
@@ -220,10 +216,10 @@ UPDATE settings SET value = '2';
 	assert.Empty(t, result.Warnings)
 	assert.Equal(t, []desired.Execute{
 		{
-			File: "schema.sql", Line: 19, SQL: "INSERT INTO settings VALUES ('version', '1');",
+			File: "schema.sql", Line: 17, SQL: "INSERT INTO settings VALUES ('version', '1');",
 			Condition: "SELECT NOT EXISTS (SELECT 1 FROM settings)",
 		},
-		{File: "schema.sql", Line: 21, SQL: "UPDATE settings SET value = '2';"},
+		{File: "schema.sql", Line: 19, SQL: "UPDATE settings SET value = '2';"},
 	}, result.Executes)
 }
 
@@ -236,7 +232,10 @@ func TestLoadDirectiveErrors(t *testing.T) {
 		{"unknown", "-- hazel:renamed_from x\nCREATE TABLE t (a);", "schema.sql:1: unknown directive: hazel:renamed_from"},
 		{"unknown on a column", "CREATE TABLE t (\n  -- hazel:nope\n  a\n);", "schema.sql:2: unknown directive: hazel:nope"},
 		{"execute on a CREATE", "-- hazel:execute\nCREATE TABLE t (a);", "schema.sql:1: hazel:execute is for a statement that hazel does not manage"},
-		{"ignore on an INSERT", "-- hazel:ignore\nINSERT INTO t VALUES (1);", "schema.sql:1: hazel:ignore is for a table, an index, a view or a trigger"},
+		{"ignore on an INSERT", "-- hazel:ignore\nINSERT INTO t VALUES (1);", "schema.sql:1: hazel:ignore is for a table, a view or a virtual table"},
+		// An index or a trigger is ignored with its table or view.
+		{"ignore on an index", "CREATE TABLE t (a);\n-- hazel:ignore\nCREATE INDEX i ON t (a);", "schema.sql:2: hazel:ignore is for a table, a view or a virtual table"},
+		{"ignore on a trigger", "CREATE TABLE t (a);\n-- hazel:ignore\nCREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END;", "schema.sql:2: hazel:ignore is for a table, a view or a virtual table"},
 		{"renamed-from on an index", "CREATE TABLE t (a);\n-- hazel:renamed-from j\nCREATE INDEX i ON t (a);", "schema.sql:2: hazel:renamed-from is for a table or a column"},
 		{"renamed-from without a name", "-- hazel:renamed-from\nCREATE TABLE t (a);", "schema.sql:1: hazel:renamed-from needs one name, the old one, as it is written in SQL"},
 		{"column renamed-from without a name", "CREATE TABLE t (\n  -- hazel:renamed-from\n  a\n);", "schema.sql:2: hazel:renamed-from needs one name, the old one, as it is written in SQL"},

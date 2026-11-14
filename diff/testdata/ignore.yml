@@ -1,21 +1,23 @@
 init: |
   CREATE TABLE legacy (id INTEGER PRIMARY KEY, body TEXT);
+  CREATE INDEX legacy_body ON legacy (body);
+  CREATE INDEX legacy_only_in_db ON legacy (id, body);
+  CREATE TRIGGER legacy_ai AFTER INSERT ON legacy BEGIN SELECT 1; END;
   CREATE TABLE t (a, b);
-  CREATE INDEX t_a ON t (a);
   CREATE VIEW v AS SELECT a FROM t;
-  CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END;
-# Ignored objects are not created, changed or dropped, whatever their
-# definitions say.
+  CREATE TRIGGER v_ii INSTEAD OF INSERT ON v BEGIN SELECT 1; END;
+# Ignored tables and views are not created, changed or dropped, whatever
+# their definitions say, and neither are their indexes and triggers, which
+# go with them: in desired or only in the database.
 desired: |
   -- hazel:ignore
   CREATE TABLE legacy (id INTEGER PRIMARY KEY);
+  CREATE INDEX legacy_body ON legacy (id);
+  CREATE TRIGGER legacy_ai AFTER DELETE ON legacy BEGIN SELECT 2; END;
   -- hazel:ignore
   CREATE TABLE new_but_ignored (x);
+  CREATE INDEX new_but_ignored_x ON new_but_ignored (x);
   CREATE TABLE t (a, b);
   -- hazel:ignore
-  CREATE INDEX t_a ON t (b);
-  -- hazel:ignore
   CREATE VIEW v AS SELECT b FROM t;
-  -- hazel:ignore
-  CREATE TRIGGER tr AFTER DELETE ON t BEGIN SELECT 2; END;
 plan: ""

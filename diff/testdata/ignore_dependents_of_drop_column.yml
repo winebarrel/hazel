@@ -1,31 +1,22 @@
 init: |
   CREATE TABLE t (a, b);
-  CREATE TABLE other (x);
   CREATE VIEW v AS SELECT a, b FROM t;
   CREATE VIEW w AS SELECT a FROM v;
-  CREATE TRIGGER tr AFTER INSERT ON other BEGIN SELECT * FROM v; END;
-# DROP COLUMN fails while w and tr read v, which is dropped. They are
-# ignored, so they are dropped and created again as current has them,
-# whatever desired says.
+# w reads v, which is dropped, so DROP COLUMN fails while w is there. w is
+# ignored, so nothing is planned for it, and the apply fails: dropping the
+# column means not ignoring what stands in its way.
 desired: |
   CREATE TABLE t (a);
-  CREATE TABLE other (x);
   CREATE VIEW v AS SELECT a FROM t;
   -- hazel:ignore
   CREATE VIEW w AS SELECT a AS z FROM v;
-  -- hazel:ignore
-  CREATE TRIGGER tr AFTER INSERT ON other BEGIN SELECT a FROM v; END;
 plan: |
   -- WARNING: the following will be dropped and their data will be lost:
   --   column t.b
   --
   -- drop and create: definition changed
   DROP VIEW v;
-  -- drop and create: depends on v, which is created again
-  DROP VIEW w;
-  DROP TRIGGER tr;
   -- drop: removed from schema
   ALTER TABLE t DROP COLUMN b;
   CREATE VIEW v AS SELECT a FROM t;
-  CREATE VIEW w AS SELECT a FROM v;
-  CREATE TRIGGER tr AFTER INSERT ON other BEGIN SELECT * FROM v; END;
+apply_error: "error in view w"

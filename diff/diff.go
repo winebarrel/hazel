@@ -30,7 +30,11 @@ const (
 // SQLite rewrites what refers to the old name (foreign keys, views and
 // triggers) as it renames, so current is compared as it is after the
 // renames: the renames are run on a copy of it in memory. An object marked
-// with -- hazel:ignore is not created, changed or dropped.
+// with -- hazel:ignore is not created, changed or dropped, and so is one
+// that WithExclude leaves out. Nothing is planned for them, not even to make
+// way for an ALTER that they stand in the way of, and not to create again
+// what a DROP VIEW or DROP TABLE takes with it: the user is assumed to know
+// SQLite, and the apply fails or the object is gone.
 //
 // NOT NULL is set and dropped with ALTER COLUMN, a CHECK is added with ADD
 // CHECK, and a named CHECK or FOREIGN KEY is dropped with DROP CONSTRAINT.
@@ -108,6 +112,23 @@ type differ struct {
 	// recreatedViews holds the keys of the views that are dropped and created
 	// again. DROP VIEW drops the triggers on the view as well.
 	recreatedViews map[string]bool
+}
+
+// leftAlone reports whether nothing is planned for what belongs to the
+// table or view named name: it is excluded, or ignored in desired. An index
+// or a trigger goes with its table or view.
+func (d *differ) leftAlone(name string) bool {
+	if d.exclude(name) {
+		return true
+	}
+	key := model.Key(name)
+	if t, ok := d.des.Tables.GetOk(key); ok {
+		return t.Ignored
+	}
+	if v, ok := d.des.Views.GetOk(key); ok {
+		return v.Ignored
+	}
+	return false
 }
 
 func q(name string) string {
@@ -336,14 +357,9 @@ func (d *differ) indexes() {
 	for key, cur := range d.cur.Indexes.All() {
 		des, ok := d.des.Indexes.GetOk(key)
 		switch {
-		case d.exclude(cur.Table) || ok && d.exclude(des.Table):
+		case d.leftAlone(cur.Table) || ok && d.leftAlone(des.Table):
 		case d.rebuilt[model.Key(cur.Table)]:
-			// The index goes with the table, and an ignored one is created
-			// again as it is.
-			if ok && des.Ignored {
-				d.b.add(createIndexes, "", cur.SQL)
-			}
-		case ok && des.Ignored:
+			// The index goes with the table.
 		case !ok:
 			// An index goes with its table when the table is dropped.
 			if d.des.Tables.Has(model.Key(cur.Table)) {
@@ -355,7 +371,7 @@ func (d *differ) indexes() {
 		}
 	}
 	for key, des := range d.des.Indexes.All() {
-		if des.Ignored || d.exclude(des.Table) {
+		if d.leftAlone(des.Table) {
 			continue
 		}
 		if !d.cur.Indexes.Has(key) || d.rebuilt[model.Key(des.Table)] {
@@ -371,9 +387,6 @@ func (d *differ) views() {
 		switch {
 		case d.exclude(cur.Name):
 		case ok && des.Ignored:
-			// An ignored view is left as it is, unless the schema check of
-			// an ALTER makes it be created again, as current has it.
-			kept = append(kept, key)
 		case !ok:
 			d.b.add(dropViewsAndTriggers, removed, "DROP VIEW "+q(cur.Name))
 		case !d.ex.sameView(cur, des):
@@ -406,12 +419,8 @@ func (d *differ) views() {
 
 func (d *differ) recreateView(key, comment string) {
 	cur, des := d.cur.Views.Get(key), d.des.Views.Get(key)
-	sql := des.SQL
-	if des.Ignored {
-		sql = cur.SQL
-	}
 	d.b.add(dropViewsAndTriggers, comment, "DROP VIEW "+q(cur.Name))
-	d.b.add(createViews, "", sql)
+	d.b.add(createViews, "", des.SQL)
 	d.recreatedViews[key] = true
 	d.dependencies[key] = cur.Name + ", which is created again"
 }
@@ -419,7 +428,7 @@ func (d *differ) recreateView(key, comment string) {
 func (d *differ) triggers() {
 	for key, cur := range d.cur.Triggers.All() {
 		des, ok := d.des.Triggers.GetOk(key)
-		if d.exclude(cur.Table) || ok && d.exclude(des.Table) {
+		if d.leftAlone(cur.Table) || ok && d.leftAlone(des.Table) {
 			continue
 		}
 		table := model.Key(cur.Table)
@@ -427,17 +436,6 @@ func (d *differ) triggers() {
 		// does the DROP TABLE of a table that is dropped or rebuilt.
 		dropped := d.recreatedViews[table] || d.rebuilt[table] || !d.des.Tables.Has(table) && !d.des.Views.Has(table)
 		switch {
-		case ok && des.Ignored:
-			// An ignored trigger is left as it is: when its view is created
-			// again, or the schema check of an ALTER needs it to be, it is
-			// created again as current has it. (Its table cannot be dropped:
-			// desired would not load.)
-			if dropped {
-				d.b.add(createTriggers, "", cur.SQL)
-			} else if reason := d.dependency(cur.SQL); d.rechecks && reason != "" {
-				d.b.add(dropViewsAndTriggers, dependsOn(reason), "DROP TRIGGER "+q(cur.Name))
-				d.b.add(createTriggers, "", cur.SQL)
-			}
 		case !ok:
 			if !dropped {
 				d.b.add(dropViewsAndTriggers, removed, "DROP TRIGGER "+q(cur.Name))
@@ -457,7 +455,7 @@ func (d *differ) triggers() {
 		}
 	}
 	for key, des := range d.des.Triggers.All() {
-		if !d.cur.Triggers.Has(key) && !des.Ignored && !d.exclude(des.Table) {
+		if !d.cur.Triggers.Has(key) && !d.leftAlone(des.Table) {
 			d.b.add(createTriggers, "", des.SQL)
 		}
 	}

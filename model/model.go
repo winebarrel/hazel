@@ -39,8 +39,8 @@ type Table struct {
 	// RenamedFrom is the old name given by a -- hazel:renamed-from
 	// directive, or "". It is set on the desired side only.
 	RenamedFrom string
-	// Ignored reports a -- hazel:ignore directive: the table is not
-	// created, changed or dropped. It is set on the desired side only.
+	// Ignored reports a -- hazel:ignore directive: the table, and its
+	// indexes and triggers, are not created, changed or dropped. It is set on the desired side only.
 	Ignored bool
 	Columns *orderedmap.Map[string, *Column]
 	// RowidAlias is the INTEGER PRIMARY KEY column, which is the rowid, or ""
@@ -145,9 +145,6 @@ type Index struct {
 	Unique  bool
 	Partial bool
 	Columns []*IndexColumn
-	// Ignored reports a -- hazel:ignore directive. It is set on the desired
-	// side only.
-	Ignored bool
 }
 
 // View is a view.
@@ -156,8 +153,9 @@ type View struct {
 	SQL  string
 	// Columns lists the names of the result columns.
 	Columns []string
-	// Ignored reports a -- hazel:ignore directive. It is set on the desired
-	// side only.
+	// Ignored reports a -- hazel:ignore directive: the view, and the
+	// triggers on it, are not created, changed or dropped. It is set on the
+	// desired side only.
 	Ignored bool
 }
 
@@ -166,9 +164,6 @@ type Trigger struct {
 	Name  string
 	Table string
 	SQL   string
-	// Ignored reports a -- hazel:ignore directive. It is set on the desired
-	// side only.
-	Ignored bool
 }
 
 // Key returns the name with ASCII letters in lowercase. SQLite compares names

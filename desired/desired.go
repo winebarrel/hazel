@@ -95,9 +95,10 @@ type Execute struct {
 //
 // The directives are read from the comments before a statement or a column
 // definition, and are removed from the SQL that runs, so that the schema
-// read back does not hold them. A statement marked with -- hazel:ignore
-// runs like any other, so that what depends on it can be created, and is
-// marked Ignored in the schema.
+// read back does not hold them. A table, a view or a virtual table marked
+// with -- hazel:ignore runs like any other, so that what depends on it can
+// be created, and is marked Ignored in the schema. Its indexes and triggers
+// are ignored with it; they cannot be marked on their own.
 func Load(ctx context.Context, srcs []Source) (*Result, error) {
 	l := &loader{
 		result:       &Result{},
@@ -186,8 +187,10 @@ func (l *loader) readStatement(file string, stmt parser.Statement) error {
 				Execute{File: file, Line: stmt.Line(), SQL: stmt.WithoutDirectives(), Condition: d.Arg})
 			execute = true
 		case parser.Ignore:
-			if kind == parser.Unsupported {
-				return misplaced(d, "a table, an index, a view or a trigger")
+			// Only what stands on its own can be ignored. An index or a
+			// trigger belongs to its table or view, and is ignored with it.
+			if kind != parser.CreateTable && kind != parser.CreateVirtualTable && kind != parser.CreateView {
+				return misplaced(d, "a table, a view or a virtual table")
 			}
 			if l.ignored[kind] == nil {
 				l.ignored[kind] = map[string]bool{}
@@ -262,14 +265,8 @@ func (l *loader) mark(s *model.Schema) {
 			c.RenamedFrom = l.columnRename[key][ckey]
 		}
 	}
-	for key, x := range s.Indexes.All() {
-		x.Ignored = l.ignored[parser.CreateIndex][key]
-	}
 	for key, x := range s.Views.All() {
 		x.Ignored = l.ignored[parser.CreateView][key]
-	}
-	for key, x := range s.Triggers.All() {
-		x.Ignored = l.ignored[parser.CreateTrigger][key]
 	}
 }
 
