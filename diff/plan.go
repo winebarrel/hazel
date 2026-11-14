@@ -6,6 +6,8 @@ import (
 	"cmp"
 	"slices"
 	"strings"
+
+	"github.com/winebarrel/hazel/parser"
 )
 
 // Plan is the DDL that takes the current schema to the desired one.
@@ -116,8 +118,17 @@ func lossOrder(s string) int {
 	return 1
 }
 
+// add appends a statement with its ";". After a "--" comment at the end of
+// the statement, the ";" goes on the next line, where the comment does not
+// take it in.
 func (b *builder) add(phase int, comment, stmt string) {
-	b.phases[phase] = append(b.phases[phase], item{comment, stmt + ";"})
+	end := ";"
+	if tokens, _ := parser.Tokenize(stmt); len(tokens) > 0 {
+		if t := tokens[len(tokens)-1]; t.Kind == parser.Comment && strings.HasPrefix(t.Text, "--") {
+			end = "\n;"
+		}
+	}
+	b.phases[phase] = append(b.phases[phase], item{comment, stmt + end})
 }
 
 // plan groups the statements: a statement joins the group before it when the
