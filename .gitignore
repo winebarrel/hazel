@@ -44,3 +44,6 @@ go.work.sum
 
 # The goreleaser output
 /dist/
+
+# Python bytecode of hooks.py, written by mkdocs build
+__pycache__/
