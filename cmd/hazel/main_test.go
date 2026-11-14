@@ -833,3 +833,64 @@ func TestDumpErrors(t *testing.T) {
 	_, err := os.Stat("missing.db")
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
+
+func TestDumpSplit(t *testing.T) {
+	dir := workdir(t, nil)
+	createDB(t, "app.db", `
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE INDEX users_name ON users (name);
+CREATE TABLE tmp_x (a);
+CREATE VIEW v AS SELECT name FROM users;
+`)
+	// A file left from an earlier dump stays.
+	require.NoError(t, os.MkdirAll("schema", 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join("schema", "old.sql"), []byte("CREATE TABLE old (a);\n"), 0o644))
+
+	out, _, code := hazel(t, "dump", "--split", "schema/sub", "-E", "tmp_*", "app.db")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "-- Database: "+filepath.Join(dir, "app.db")+"\n-- Wrote 2 file(s) to schema/sub\n", out)
+	b, err := os.ReadFile(filepath.Join("schema", "sub", "users.sql"))
+	require.NoError(t, err)
+	assert.Equal(t, "CREATE TABLE users (\n    id INTEGER PRIMARY KEY,\n    name TEXT\n);\n\nCREATE INDEX users_name ON users (name);\n", string(b))
+	b, err = os.ReadFile(filepath.Join("schema", "sub", "v.sql"))
+	require.NoError(t, err)
+	assert.Equal(t, "CREATE VIEW v AS SELECT name FROM users;\n", string(b))
+	assert.NoFileExists(t, filepath.Join("schema", "sub", "tmp_x.sql"))
+
+	// The files plan clean, and an existing file is overwritten.
+	_, _, code = hazel(t, "plan", "--check", "-E", "tmp_*", "app.db", "schema/sub/users.sql", "schema/sub/v.sql")
+	assert.Equal(t, 0, code)
+	_, _, code = hazel(t, "dump", "--split", "schema", "--no-format", "app.db")
+	assert.Equal(t, 0, code)
+	b, err = os.ReadFile(filepath.Join("schema", "users.sql"))
+	require.NoError(t, err)
+	assert.Equal(t, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\n\nCREATE INDEX users_name ON users (name);\n", string(b))
+	assert.FileExists(t, filepath.Join("schema", "old.sql"))
+}
+
+func TestDumpSplitErrors(t *testing.T) {
+	workdir(t, map[string]string{"file": "", "hazel.yml": "split: schema\n"})
+	createDB(t, "app.db", "CREATE TABLE t (a);")
+	createDB(t, "slash.db", `CREATE TABLE "a/b" (a);`)
+	// A directory where the file of t goes.
+	require.NoError(t, os.MkdirAll(filepath.Join("dir", "t.sql"), 0o755))
+	tests := []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"dump", "--split", "out", "slash.db"}, 1, `cannot write a file for "a/b"`},
+		{[]string{"dump", "--split", "file", "app.db"}, 1, "file"},
+		{[]string{"dump", "--split", "dir", "app.db"}, 1, "t.sql"},
+		{[]string{"-C", "hazel.yml", "dump", "app.db"}, 80, "split"},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			_, errOut, code := hazel(t, tt.args...)
+			assert.Equal(t, tt.code, code)
+			assert.Contains(t, errOut, tt.want)
+		})
+	}
+	// Nothing is written for a name that is not a plain file name.
+	assert.NoDirExists(t, "out")
+}

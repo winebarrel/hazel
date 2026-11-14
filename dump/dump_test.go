@@ -87,3 +87,36 @@ CREATE TRIGGER v_tr INSTEAD OF INSERT ON v BEGIN SELECT 1; END;
 	assert.Equal(t, "CREATE TABLE u (\n    a\n);\n", dump.String(s, dump.Options{Exclude: exclude}))
 	assert.Empty(t, dump.String(model.NewSchema(), dump.Options{}))
 }
+
+func TestFiles(t *testing.T) {
+	s := read(t, `
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE INDEX users_name ON users (name);
+CREATE VIEW v AS SELECT name FROM users;
+CREATE TRIGGER v_tr INSTEAD OF INSERT ON v BEGIN SELECT 1; END;
+CREATE TABLE "É" (a);
+CREATE TABLE "é" (a);
+CREATE TABLE "é_2" (a);
+`)
+	files, err := dump.Files(s, dump.Options{})
+	require.NoError(t, err)
+	assert.Equal(t, []dump.File{
+		{Name: "users.sql", Body: "CREATE TABLE users (\n    id INTEGER PRIMARY KEY,\n    name TEXT\n);\n\nCREATE INDEX users_name ON users (name);\n"},
+		{Name: "É.sql", Body: "CREATE TABLE \"É\" (\n    a\n);\n"},
+		// Names that differ in case only would be one file on a file system
+		// that ignores case.
+		{Name: "é_2.sql", Body: "CREATE TABLE \"é\" (\n    a\n);\n"},
+		{Name: "é_2_2.sql", Body: "CREATE TABLE \"é_2\" (\n    a\n);\n"},
+		{Name: "v.sql", Body: "CREATE VIEW v AS SELECT name FROM users;\n\nCREATE TRIGGER v_tr INSTEAD OF INSERT ON v BEGIN SELECT 1; END;\n"},
+	}, files)
+}
+
+func TestFilesUnsafeName(t *testing.T) {
+	for _, name := range []string{"a/b", `a\b`} {
+		t.Run(name, func(t *testing.T) {
+			s := read(t, `CREATE TABLE "`+name+`" (a);`)
+			_, err := dump.Files(s, dump.Options{})
+			assert.EqualError(t, err, `cannot write a file for "`+name+`": the name is not a plain file name`)
+		})
+	}
+}
