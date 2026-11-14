@@ -30,6 +30,21 @@ Judge a bug by a concrete use case. A bug reached only through an operation user
 
 Do not coddle the user. Assume they know SQLite and their own schema.
 
+## Build & test
+
+```sh
+make vet   # go vet ./...
+make test  # go test -v ./... $(TEST_OPTS)
+make lint  # golangci-lint run
+make fix   # golangci-lint run --fix (auto-fix lint errors)
+```
+
+- The tests need no database server. CI runs them on Linux, macOS and Windows.
+
+## Project structure
+
+- `parser/` - Tokenizer, statement splitter and token comparison for schema files
+
 ## Development workflow
 
 1. Create a feature branch before starting implementation.
@@ -39,6 +54,7 @@ Do not coddle the user. Assume they know SQLite and their own schema.
    - Verify test cases are comprehensive (check for missing scenarios and edge cases).
    - Verify coverage has not decreased and cover any reachable paths that can be tested naturally (do not write unnatural tests for unreachable defensive code).
    - Consider whether similar issues exist elsewhere in the codebase.
+   - Run `make lint` to check for lint errors.
    - Add a `CHANGELOG.md` entry under `## [Unreleased]` when the change is one a user of hazel would notice, creating that section above the newest release if it is not there. The release fills in the version and date, and the link definitions at the bottom of the file; leave them alone. What they cannot see gets no entry: a test or fixture, documentation, a dependency bump, or a refactor that leaves behavior alone.
 
 ## Pull request labels
