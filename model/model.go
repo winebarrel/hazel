@@ -36,11 +36,14 @@ type Table struct {
 	WithoutRowid bool
 	Columns      *orderedmap.Map[string, *Column]
 	// PrimaryKey lists the columns of the PRIMARY KEY in key order. It is
-	// empty when the table has none.
-	PrimaryKey  []*IndexColumn
+	// empty when the table has none. The key of a rowid alias (an INTEGER
+	// PRIMARY KEY) has no index, so its Desc is always false, even when
+	// written as PRIMARY KEY (x DESC); the order makes no difference to how
+	// the rows are stored.
+	PrimaryKey []*IndexColumn
+	// ForeignKeys are the FOREIGN KEY constraints, in the order written.
 	ForeignKeys []*ForeignKey
-	// Uniques are the UNIQUE constraints, in the order PRAGMA index_list
-	// reports them.
+	// Uniques are the UNIQUE constraints, in the order written.
 	Uniques []*Unique
 }
 

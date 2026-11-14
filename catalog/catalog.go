@@ -5,6 +5,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/winebarrel/hazel/model"
 	"github.com/winebarrel/orderedmap/v2"
@@ -29,6 +30,7 @@ func Read(ctx context.Context, db *sql.DB) (*model.Schema, error) {
 	r := &reader{ctx: ctx, db: db}
 	s := model.NewSchema()
 	for _, o := range r.objects() {
+		r.object = o.typ + " " + o.name
 		key := model.Key(o.name)
 		switch o.typ {
 		case "table":
@@ -48,11 +50,21 @@ func Read(ctx context.Context, db *sql.DB) (*model.Schema, error) {
 }
 
 // reader runs the queries of one Read. The first error is kept in err, and
-// every query after it returns nothing.
+// every query after it returns nothing. The error names the object being
+// read, since a PRAGMA can fail on one object, such as a view whose table
+// was dropped.
 type reader struct {
-	ctx context.Context
-	db  *sql.DB
-	err error
+	ctx    context.Context
+	db     *sql.DB
+	object string // "view v", or "" while reading sqlite_schema
+	err    error
+}
+
+func (r *reader) fail(err error) {
+	if r.object != "" {
+		err = fmt.Errorf("%s: %w", r.object, err)
+	}
+	r.err = err
 }
 
 // queryAll runs q and scans every row into a T.
@@ -62,7 +74,7 @@ func queryAll[T any](r *reader, q string, args []any, scan func(*sql.Rows, *T) e
 	}
 	rows, err := r.db.QueryContext(r.ctx, q, args...)
 	if err != nil {
-		r.err = err
+		r.fail(err)
 		return nil
 	}
 	defer rows.Close() //nolint:errcheck
@@ -70,12 +82,14 @@ func queryAll[T any](r *reader, q string, args []any, scan func(*sql.Rows, *T) e
 	for rows.Next() {
 		var v T
 		if err := scan(rows, &v); err != nil {
-			r.err = err
+			r.fail(err)
 			return nil
 		}
 		out = append(out, v)
 	}
-	r.err = rows.Err()
+	if err := rows.Err(); err != nil {
+		r.fail(err)
+	}
 	return out
 }
 
@@ -153,11 +167,15 @@ func (r *reader) table(o objectRow) *model.Table {
 
 	t.ForeignKeys = r.foreignKeys(o.name)
 
-	// PRAGMA index_list lists the newest index first, so the descending order
-	// gives the order the constraints were written in.
+	// The automatic indexes are in sqlite_schema, without SQL, in the order
+	// the constraints were written in. PRAGMA index_list does not keep that
+	// order: it moves an ON CONFLICT REPLACE index to the end. The PRIMARY
+	// KEY of a WITHOUT ROWID table is the table itself and has no row there;
+	// its NULL rowid sorts first.
 	indexes := queryAll(r, `
-		SELECT name, origin FROM pragma_index_list(?, 'main')
-		WHERE origin IN ('pk', 'u') ORDER BY seq DESC`, []any{o.name},
+		SELECT l.name, l.origin FROM pragma_index_list(?, 'main') AS l
+		LEFT JOIN main.sqlite_schema AS s ON s.name = l.name
+		WHERE l.origin IN ('pk', 'u') ORDER BY s.rowid`, []any{o.name},
 		func(rows *sql.Rows, i *[2]string) error {
 			return rows.Scan(&i[0], &i[1])
 		})

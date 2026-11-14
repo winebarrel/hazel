@@ -90,7 +90,7 @@ func TestReadPrimaryKey(t *testing.T) {
 		`CREATE TABLE none (a)`,
 		`CREATE TABLE rowid (a, b, PRIMARY KEY (a DESC))`,
 		`CREATE TABLE text_pk (a TEXT PRIMARY KEY)`,
-		`CREATE TABLE kv (k TEXT, v TEXT COLLATE NOCASE, PRIMARY KEY (k DESC, v)) WITHOUT ROWID`,
+		`CREATE TABLE kv (k TEXT, v TEXT COLLATE NOCASE, u UNIQUE, PRIMARY KEY (k DESC, v)) WITHOUT ROWID`,
 		`CREATE TABLE s (a INT PRIMARY KEY) STRICT`,
 	)
 	assert.Empty(t, schema.Tables.Get("none").PrimaryKey)
@@ -108,6 +108,7 @@ func TestReadPrimaryKey(t *testing.T) {
 	}, kv.PrimaryKey)
 	// The PRIMARY KEY of a WITHOUT ROWID table implies NOT NULL.
 	assert.True(t, kv.Columns.Get("k").NotNull)
+	assert.Equal(t, []*model.Unique{{Columns: []*model.IndexColumn{{Name: "u", Collation: "BINARY"}}}}, kv.Uniques)
 
 	s := schema.Tables.Get("s")
 	assert.True(t, s.Strict)
@@ -161,6 +162,29 @@ func TestReadUniques(t *testing.T) {
 		{Columns: []*model.IndexColumn{{Name: "b", Collation: "BINARY"}, {Name: "c", Desc: true, Collation: "BINARY"}}},
 		{Columns: []*model.IndexColumn{{Name: "c", Collation: "BINARY"}}},
 	}, schema.Tables.Get("t").Uniques)
+}
+
+func TestReadUniquesOnConflictReplace(t *testing.T) {
+	// PRAGMA index_list moves an ON CONFLICT REPLACE index to the end; the
+	// written order is kept anyway.
+	schema := readSchema(t,
+		`CREATE TABLE t (a, b UNIQUE, c, UNIQUE (c), UNIQUE (a) ON CONFLICT REPLACE, UNIQUE (a, c))`,
+	)
+	var got [][]string
+	for _, u := range schema.Tables.Get("t").Uniques {
+		var cols []string
+		for _, c := range u.Columns {
+			cols = append(cols, c.Name)
+		}
+		got = append(got, cols)
+	}
+	assert.Equal(t, [][]string{{"b"}, {"c"}, {"a"}, {"a", "c"}}, got)
+}
+
+func TestReadRowidAliasDesc(t *testing.T) {
+	schema := readSchema(t, `CREATE TABLE t (x INTEGER, PRIMARY KEY (x DESC))`)
+	// x is a rowid alias and has no index, so the DESC is not reported.
+	assert.Equal(t, []*model.IndexColumn{{Name: "x", Collation: "BINARY"}}, schema.Tables.Get("t").PrimaryKey)
 }
 
 func TestReadIndexes(t *testing.T) {
@@ -231,6 +255,27 @@ func TestReadEmpty(t *testing.T) {
 	assert.Equal(t, 0, schema.Indexes.Len())
 	assert.Equal(t, 0, schema.Views.Len())
 	assert.Equal(t, 0, schema.Triggers.Len())
+}
+
+func TestReadViewOfDroppedTable(t *testing.T) {
+	conn, err := db.OpenReadWrite(db.Memory, time.Second)
+	require.NoError(t, err)
+	defer conn.Close()
+	for _, s := range []string{
+		`CREATE TABLE base (x)`,
+		`CREATE VIEW v AS SELECT x FROM base`,
+		`DROP TABLE base`,
+	} {
+		_, err := conn.Exec(s)
+		require.NoError(t, err)
+	}
+
+	// SQLite does not check the views a DROP TABLE breaks. The error names
+	// the view.
+	_, err = catalog.Read(context.Background(), conn)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "view v: ")
+	assert.Contains(t, err.Error(), "no such table: main.base")
 }
 
 func TestReadClosed(t *testing.T) {
