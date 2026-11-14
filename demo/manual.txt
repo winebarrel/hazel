@@ -6,8 +6,11 @@ demo.db holds the schema from current.sql, with a few rows.
 
 Try the following:
 
-  hazel plan  demo.db desired.sql   # show the DDL diff
   hazel plan  --allow-table-rebuild demo.db desired.sql
+                                    # show the DDL diff
+  # hazel plan demo.db desired.sql
+                                    # fails without
+                                    # --allow-table-rebuild:
                                     # posts needs a rebuild
   hazel apply --allow-table-rebuild demo.db desired.sql
                                     # apply the changes
