@@ -37,3 +37,7 @@ go.work.sum
 
 # The documentation site built by mkdocs build
 /site/
+
+# The demo recordings made by make demo
+/demo.gif
+/demo.webm
