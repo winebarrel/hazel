@@ -732,7 +732,7 @@ INSERT INTO c VALUES (1, 99);
 	newDB(t, "")
 	_, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
 	assert.Equal(t, 1, code)
-	assert.Contains(t, errOut, "foreign key violations, rolled back: c (rowid 1) refers to a missing row of p")
+	assert.Contains(t, errOut, "foreign key violations, rolled back: c (rowid 1) refers to a missing row of p (--skip-foreign-key-check, or -- hazel:skip-foreign-key-check on the table, leaves rows that were there before out of the check)\n")
 	assert.Equal(t, "0", query(t, "app.db", "SELECT count(*) FROM sqlite_schema WHERE name = 's_v'"))
 
 	// --skip-foreign-key-check runs no check.

@@ -200,7 +200,7 @@ func foreignKeyCheck(ctx context.Context, conn *sql.Conn, want *model.Schema) er
 		return err
 	}
 	if violations.Valid {
-		return fmt.Errorf("foreign key violations, rolled back: %s", violations.String)
+		return fmt.Errorf("foreign key violations, rolled back: %s (--skip-foreign-key-check, or -- hazel:skip-foreign-key-check on the table, leaves rows that were there before out of the check)", violations.String)
 	}
 	return nil
 }
