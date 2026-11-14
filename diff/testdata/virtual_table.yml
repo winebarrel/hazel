@@ -1,0 +1,23 @@
+init: |
+  CREATE VIRTUAL TABLE docs USING fts5(title);
+  CREATE VIRTUAL TABLE boxes USING rtree(id, minx, maxx);
+  CREATE VIRTUAL TABLE gone USING fts5(x);
+  CREATE TABLE was_plain (a);
+desired: |
+  CREATE VIRTUAL TABLE docs USING fts5(title, body);
+  CREATE VIRTUAL TABLE BOXES using RTREE(id, minx, maxx);
+  CREATE VIRTUAL TABLE was_plain USING fts5(a);
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   table  docs
+  --   table  gone
+  --   table  was_plain
+  --
+  -- drop and create: definition changed
+  DROP TABLE docs;
+  -- drop: removed from schema
+  DROP TABLE gone;
+  -- drop and create: definition changed
+  DROP TABLE was_plain;
+  CREATE VIRTUAL TABLE docs USING fts5(title, body);
+  CREATE VIRTUAL TABLE was_plain USING fts5(a);

@@ -1,0 +1,17 @@
+init: |
+  CREATE TABLE t (a, b);
+  CREATE VIEW keep AS SELECT a FROM t;
+  CREATE VIEW changed AS SELECT a FROM t;
+  CREATE VIEW gone AS SELECT b FROM t;
+desired: |
+  CREATE TABLE t (a, b);
+  CREATE VIEW keep AS SELECT a FROM t;
+  CREATE VIEW changed AS SELECT a, b FROM t;
+  CREATE VIEW added AS SELECT * FROM changed;
+plan: |
+  -- drop and create: definition changed
+  DROP VIEW changed;
+  -- drop: removed from schema
+  DROP VIEW gone;
+  CREATE VIEW changed AS SELECT a, b FROM t;
+  CREATE VIEW added AS SELECT * FROM changed;

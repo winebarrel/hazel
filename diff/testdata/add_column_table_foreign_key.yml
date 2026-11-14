@@ -1,0 +1,9 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY);
+  CREATE TABLE posts (id INTEGER PRIMARY KEY);
+# ADD COLUMN copies the column definition only, so a table-level FOREIGN KEY
+# on the new column cannot come with it.
+desired: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY);
+  CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, FOREIGN KEY (user_id) REFERENCES users (id));
+error: "table posts: changing a FOREIGN KEY constraint is not supported yet"

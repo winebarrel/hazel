@@ -1,0 +1,9 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY);
+  CREATE TABLE posts (id INTEGER PRIMARY KEY);
+# A foreign key on a column being added comes with the column definition.
+desired: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY);
+  CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users (id) ON DELETE CASCADE);
+plan: |
+  ALTER TABLE posts ADD COLUMN user_id INTEGER REFERENCES users (id) ON DELETE CASCADE;

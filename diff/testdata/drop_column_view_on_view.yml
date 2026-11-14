@@ -1,0 +1,22 @@
+init: |
+  CREATE TABLE t (a, b);
+  CREATE VIEW va AS SELECT a, b FROM t;
+  CREATE VIEW vb AS SELECT a FROM va;
+# DROP COLUMN checks every view and trigger in the schema. vb reads va,
+# which phase 1 drops, so vb is dropped and created too.
+desired: |
+  CREATE TABLE t (a);
+  CREATE VIEW va AS SELECT a FROM t;
+  CREATE VIEW vb AS SELECT a FROM va;
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   column t.b
+  --
+  -- drop and create: definition changed
+  DROP VIEW va;
+  -- drop and create: depends on va, which is created again
+  DROP VIEW vb;
+  -- drop: removed from schema
+  ALTER TABLE t DROP COLUMN b;
+  CREATE VIEW va AS SELECT a FROM t;
+  CREATE VIEW vb AS SELECT a FROM va;

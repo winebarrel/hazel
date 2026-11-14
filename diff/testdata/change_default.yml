@@ -1,0 +1,5 @@
+init: |
+  CREATE TABLE t (a INT DEFAULT 0);
+desired: |
+  CREATE TABLE t (a INT DEFAULT 1);
+error: "table t: changing column a is not supported yet"

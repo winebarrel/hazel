@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/stretchr/testify v1.12.1
 	github.com/winebarrel/orderedmap/v2 v2.4.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.62.0
 )
 
