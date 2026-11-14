@@ -16,8 +16,6 @@ Only the `main` schema is managed. The temp schema, ATTACH, extensions, applicat
 
 Concurrency with other connections is out of scope.
 
-Let SQLite do the work. Validate the schema by executing it in `:memory:` and read its structure from SQLite, rather than reimplementing SQLite's rules in the parser.
-
 Avoid normalization that makes the diff complex.
 
 Never rebuild a table implicitly.
