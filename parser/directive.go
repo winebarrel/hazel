@@ -128,3 +128,9 @@ func (s Statement) WithoutDirectives() string {
 	}
 	return b.String()
 }
+
+// Directive returns the directive that the token is, if it is one: a "--"
+// comment whose text starts with "hazel:".
+func (t Token) Directive() (Directive, bool) {
+	return directive(t)
+}

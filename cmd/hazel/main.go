@@ -23,6 +23,7 @@ type cli struct {
 	Plan  command.Plan  `cmd:"" help:"Print the DDL that takes the database to the schema files."`
 	Apply command.Apply `cmd:"" help:"Run the DDL that takes the database to the schema files, in one transaction."`
 	Dump  command.Dump  `cmd:"" help:"Print the schema of the database as SQL."`
+	Fmt   command.Fmt   `cmd:"" help:"Lay out the schema files in place."`
 	Diff  command.Diff  `cmd:"" help:"Print the DDL that takes one schema file to another. No database is read."`
 }
 

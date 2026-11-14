@@ -51,7 +51,7 @@ make fix   # golangci-lint run --fix (auto-fix lint errors)
 - `dump/` - Writes a schema as the CREATE statements that make it, for `hazel dump`
 - `diff/` - Computes the plan, the DDL that takes the current schema to the desired one
 - `desired/` - Loads the desired schema: runs the CREATE statements of the schema files in `:memory:` and reads them back with `catalog`
-- `format/` - Lays out a CREATE statement, moving only the whitespace and the quotes of names that do not need them
+- `format/` - Lays out a CREATE statement, moving only the whitespace and the quotes of names that do not need them, and a schema file for `hazel fmt`
 - `model/` - The schema objects hazel compares (tables, columns, constraints, indexes, views, triggers)
 - `parser/` - Tokenizer, statement splitter, statement classification, CREATE TABLE parsing (what PRAGMAs do not report), identifier quoting and token comparison for schema files
 

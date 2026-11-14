@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -789,6 +790,9 @@ CREATE VIEW v AS SELECT name FROM users;
 	require.NoError(t, os.WriteFile("dump.sql", []byte(out), 0o644))
 	_, _, code = hazel(t, "plan", "--check", "app.db", "dump.sql")
 	assert.Equal(t, 0, code)
+	// and fmt leaves it as it is.
+	_, _, code = hazel(t, "fmt", "--check", "dump.sql")
+	assert.Equal(t, 0, code)
 
 	out, _, code = hazel(t, "dump", "--no-format", "-E", "tmp_*", "app.db")
 	assert.Equal(t, 0, code)
@@ -897,4 +901,68 @@ func TestDumpSplitErrors(t *testing.T) {
 	}
 	// Nothing is written for a name that is not a plain file name.
 	assert.NoDirExists(t, "out")
+}
+
+func TestFmt(t *testing.T) {
+	workdir(t, map[string]string{
+		"tables.sql": "-- hazel:renamed-from members\nCREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\n",
+		"views.sql":  "CREATE VIEW v AS SELECT name FROM users;\n",
+	})
+	require.NoError(t, os.Chmod("tables.sql", 0o600))
+
+	// views.sql reads a table of tables.sql, and is already formatted.
+	out, errOut, code := hazel(t, "fmt", "--check", "tables.sql", "views.sql")
+	assert.Equal(t, 2, code)
+	assert.Equal(t, "tables.sql\n", out)
+	assert.Empty(t, errOut)
+
+	out, _, code = hazel(t, "fmt", "tables.sql", "views.sql")
+	assert.Equal(t, 0, code)
+	assert.Empty(t, out)
+	b, err := os.ReadFile("tables.sql")
+	require.NoError(t, err)
+	assert.Equal(t, "-- hazel:renamed-from members\nCREATE TABLE users (\n    id INTEGER PRIMARY KEY,\n    name TEXT\n);\n", string(b))
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat("tables.sql")
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
+
+	_, _, code = hazel(t, "fmt", "--check", "tables.sql", "views.sql")
+	assert.Equal(t, 0, code)
+
+	_, _, code = hazel(t, "fmt", "--strip-renamed-from", "tables.sql")
+	assert.Equal(t, 0, code)
+	b, err = os.ReadFile("tables.sql")
+	require.NoError(t, err)
+	assert.Equal(t, "CREATE TABLE users (\n    id INTEGER PRIMARY KEY,\n    name TEXT\n);\n", string(b))
+}
+
+func TestFmtErrors(t *testing.T) {
+	workdir(t, map[string]string{
+		"good.sql":   "CREATE TABLE t (a,b);",
+		"broken.sql": "CREATE TABLE u (",
+		"hazel.yml":  "strip-renamed-from: true\n",
+	})
+	tests := []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"fmt"}, 80, `expected "<schema-file> ..."`},
+		{[]string{"fmt", "good.sql", "broken.sql"}, 1, "broken.sql:1:"},
+		{[]string{"fmt", "good.sql", "missing.sql"}, 1, "missing.sql"},
+		{[]string{"-C", "hazel.yml", "fmt", "good.sql"}, 80, "strip-renamed-from"},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			_, errOut, code := hazel(t, tt.args...)
+			assert.Equal(t, tt.code, code)
+			assert.Contains(t, errOut, tt.want)
+		})
+	}
+	// No file is written when one of them fails.
+	b, err := os.ReadFile("good.sql")
+	require.NoError(t, err)
+	assert.Equal(t, "CREATE TABLE t (a,b);", string(b))
 }
