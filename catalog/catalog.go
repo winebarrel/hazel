@@ -195,14 +195,16 @@ func (r *reader) table(o objectRow) *model.Table {
 			t.PrimaryKey = append(t.PrimaryKey, &model.IndexColumn{Name: name, Collation: "BINARY"})
 		}
 	}
-	addTableDef(t)
+	r.addTableDef(t)
 	return t
 }
 
 // addTableDef adds what the CREATE TABLE says that PRAGMAs do not report. The
 // foreign keys of both are in the order written, so they are matched by
-// position.
-func addTableDef(t *model.Table) {
+// position. If the parser finds another number of them than PRAGMA
+// foreign_key_list reports, the read fails rather than putting names on the
+// wrong ones.
+func (r *reader) addTableDef(t *model.Table) {
 	tokens, _ := parser.Tokenize(t.SQL)
 	def := parser.ParseCreateTable(parser.Statement{Tokens: tokens})
 	t.Autoincrement = def.Autoincrement
@@ -215,12 +217,15 @@ func addTableDef(t *model.Table) {
 	for _, c := range def.Checks {
 		t.Checks = append(t.Checks, &model.Check{Name: c.Name, Expr: c.Expr, Column: c.Column})
 	}
+	if len(def.ForeignKeys) != len(t.ForeignKeys) {
+		r.fail(fmt.Errorf("found %d foreign keys in the SQL, but PRAGMA foreign_key_list reports %d",
+			len(def.ForeignKeys), len(t.ForeignKeys)))
+		return
+	}
 	for i, fk := range def.ForeignKeys {
-		if i < len(t.ForeignKeys) {
-			t.ForeignKeys[i].Name = fk.Name
-			t.ForeignKeys[i].Deferred = fk.Deferred
-			t.ForeignKeys[i].Column = fk.Column
-		}
+		t.ForeignKeys[i].Name = fk.Name
+		t.ForeignKeys[i].Deferred = fk.Deferred
+		t.ForeignKeys[i].Column = fk.Column
 	}
 }
 

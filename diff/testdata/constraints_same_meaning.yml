@@ -5,11 +5,16 @@ init: |
     a TEXT COLLATE nocase CONSTRAINT a_positive CHECK (length(a)>0),
     b AS (length(a)+1),
     c REFERENCES p (id) NOT DEFERRABLE INITIALLY DEFERRED,
-    d REFERENCES p (id) DEFERRABLE INITIALLY DEFERRED
+    d REFERENCES p (id) DEFERRABLE INITIALLY DEFERRED,
+    e TEXT,
+    f REFERENCES p (id) NOT NULL DEFERRABLE INITIALLY DEFERRED
   );
 # Constraint names are not compared, a column CHECK equals the same table
 # CHECK, collation names and expressions are compared by their tokens, and
 # NOT DEFERRABLE INITIALLY DEFERRED is as immediate as no clause at all.
+# COLLATE BINARY is what a column without COLLATE uses, and a DEFERRABLE
+# written as a column constraint of its own applies to the REFERENCES before
+# it.
 desired: |
   CREATE TABLE p (id INTEGER PRIMARY KEY);
   CREATE TABLE t (
@@ -18,6 +23,8 @@ desired: |
     b AS ( LENGTH( a ) + 1 ),
     c REFERENCES p (id),
     d REFERENCES p (id) DEFERRABLE INITIALLY DEFERRED,
+    e TEXT COLLATE binary,
+    f REFERENCES p (id) DEFERRABLE INITIALLY DEFERRED NOT NULL,
     CONSTRAINT other_name CHECK ( length(a) > 0 )
   );
 plan: ""

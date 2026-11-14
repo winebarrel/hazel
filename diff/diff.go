@@ -288,9 +288,18 @@ func columnEqual(a, b *model.Column) bool {
 	return sqlEqual(a.Type, b.Type) &&
 		a.NotNull == b.NotNull &&
 		ptrEqual(a.Default, b.Default) &&
-		parser.EqualFold(a.Collation, b.Collation) &&
+		parser.EqualFold(collation(a), collation(b)) &&
 		a.Generated == b.Generated &&
 		sqlEqual(a.GeneratedExpr, b.GeneratedExpr)
+}
+
+// collation returns the collation of a column. A column without COLLATE uses
+// BINARY, so writing COLLATE BINARY changes nothing.
+func collation(c *model.Column) string {
+	if c.Collation == "" {
+		return "BINARY"
+	}
+	return c.Collation
 }
 
 // checkEqual compares two CHECK constraints by their expressions. Names are

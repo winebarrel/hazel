@@ -72,6 +72,25 @@ func TestParseCreateTableActions(t *testing.T) {
 	assert.Equal(t, []parser.ForeignKeyDef{{Deferred: true, Column: "a"}}, def.ForeignKeys)
 }
 
+func TestParseCreateTableSeparateDeferrable(t *testing.T) {
+	// DEFERRABLE as a column constraint of its own applies to the last
+	// foreign key of the table so far, even one of an earlier column.
+	def := parser.ParseCreateTable(statement(t, `CREATE TABLE t (
+  a REFERENCES p NOT NULL DEFERRABLE INITIALLY DEFERRED,
+  b REFERENCES p DEFERRABLE INITIALLY DEFERRED NOT DEFERRABLE,
+  c DEFERRABLE INITIALLY DEFERRED,
+  d
+)`))
+	assert.Equal(t, []parser.ForeignKeyDef{
+		{Column: "a", Deferred: true},
+		{Column: "b", Deferred: true},
+	}, def.ForeignKeys)
+
+	// With no foreign key before it, it applies to nothing.
+	def = parser.ParseCreateTable(statement(t, `CREATE TABLE t (a DEFERRABLE INITIALLY DEFERRED)`))
+	assert.Empty(t, def.ForeignKeys)
+}
+
 func TestParseCreateTablePlain(t *testing.T) {
 	def := parser.ParseCreateTable(statement(t, `CREATE TABLE t(a,"b c")`))
 	assert.False(t, def.Autoincrement)

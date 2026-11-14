@@ -72,7 +72,8 @@ type Column struct {
 	// Default is the text of the DEFAULT expression, or nil when there is
 	// none.
 	Default *string
-	// Collation is the name of the COLLATE, as written, or "".
+	// Collation is the name of the COLLATE, as written, or "" when there is
+	// none, which means BINARY.
 	Collation string
 	Generated Generated
 	// GeneratedExpr is the expression of a generated column, as written, or
@@ -98,7 +99,8 @@ type ForeignKey struct {
 	RefColumns []string
 	OnUpdate   string
 	OnDelete   string
-	// Deferred reports DEFERRABLE INITIALLY DEFERRED.
+	// Deferred reports DEFERRABLE INITIALLY DEFERRED, written in the
+	// REFERENCES clause or as a column constraint of its own after it.
 	Deferred bool
 	// Name is the CONSTRAINT name, or "".
 	Name string

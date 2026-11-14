@@ -102,6 +102,15 @@ func ParseCreateTable(s Statement) TableDef {
 				fk.Column = e.Column
 				def.ForeignKeys = append(def.ForeignKeys, fk)
 				i = end
+			case isDeferStart(tokens, i):
+				// A DEFERRABLE written as a column constraint of its own
+				// applies to the last foreign key of the table so far
+				// (sqlite3DeferForeignKey in build.c).
+				var deferred bool
+				deferred, i = deferSubclause(tokens, i)
+				if n := len(def.ForeignKeys); n > 0 {
+					def.ForeignKeys[n-1].Deferred = deferred
+				}
 			case t.IsKeyword("COLLATE") && i+1 < len(tokens):
 				col.Collation = tokens[i+1].Name()
 				i++
@@ -179,15 +188,8 @@ func foreignKeyClause(tokens []Token, i int) (ForeignKeyDef, int) {
 			for end+1 < len(tokens) && isActionWord(tokens[end+1]) {
 				end++
 			}
-		case t.IsKeyword("NOT") && end+2 < len(tokens) && tokens[end+2].IsKeyword("DEFERRABLE"):
-			end += 2
-			end = initially(tokens, end)
-		case t.IsKeyword("DEFERRABLE"):
-			end++
-			if end+2 < len(tokens) && tokens[end+1].IsKeyword("INITIALLY") && tokens[end+2].IsKeyword("DEFERRED") {
-				fk.Deferred = true
-			}
-			end = initially(tokens, end)
+		case isDeferStart(tokens, end+1):
+			fk.Deferred, end = deferSubclause(tokens, end+1)
 		default:
 			return fk, end
 		}
@@ -201,11 +203,26 @@ func isActionWord(t Token) bool {
 	return slices.ContainsFunc([]string{"SET", "NULL", "DEFAULT", "CASCADE", "RESTRICT", "NO", "ACTION"}, t.IsKeyword)
 }
 
-// initially skips an INITIALLY DEFERRED or INITIALLY IMMEDIATE after
-// tokens[i].
-func initially(tokens []Token, i int) int {
-	if i+2 < len(tokens) && tokens[i+1].IsKeyword("INITIALLY") {
-		return i + 2
+// isDeferStart reports whether tokens[i] starts a DEFERRABLE or NOT
+// DEFERRABLE clause.
+func isDeferStart(tokens []Token, i int) bool {
+	if i < len(tokens) && tokens[i].IsKeyword("DEFERRABLE") {
+		return true
 	}
-	return i
+	return i+1 < len(tokens) && tokens[i].IsKeyword("NOT") && tokens[i+1].IsKeyword("DEFERRABLE")
+}
+
+// deferSubclause reads [NOT] DEFERRABLE [INITIALLY DEFERRED|IMMEDIATE] at
+// tokens[i] and returns whether it means deferred, and the index of its last
+// token. Only DEFERRABLE INITIALLY DEFERRED does (defer_subclause in
+// parse.y).
+func deferSubclause(tokens []Token, i int) (bool, int) {
+	not := tokens[i].IsKeyword("NOT")
+	if not {
+		i++
+	}
+	if i+2 < len(tokens) && tokens[i+1].IsKeyword("INITIALLY") {
+		return !not && tokens[i+2].IsKeyword("DEFERRED"), i + 2
+	}
+	return false, i
 }
