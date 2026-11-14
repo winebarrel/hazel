@@ -24,3 +24,5 @@ lint:
 .PHONY: fix
 fix:
 	golangci-lint run --fix
+
+include realworld.mk

@@ -38,6 +38,7 @@ make vet   # go vet ./...
 make test  # go test -v ./... $(TEST_OPTS)
 make lint  # golangci-lint run
 make fix   # golangci-lint run --fix (auto-fix lint errors)
+make test-realworld # round-trip the real-world SQLite schemas in realworld.mk (needs network; see REALWORLD-TESTS.md)
 ```
 
 - The tests need no database server. CI runs them on Linux, macOS and Windows, with `-coverpkg=./...`, since the CLI tests in `cmd/hazel` cover `cmd/command`.
@@ -54,6 +55,7 @@ make fix   # golangci-lint run --fix (auto-fix lint errors)
 - `desired/` - Loads the desired schema: runs the CREATE statements of the schema files in `:memory:` and reads them back with `catalog`
 - `format/` - Lays out a CREATE statement, moving only the whitespace and the quotes of names that do not need them, and a schema file for `hazel fmt`
 - `model/` - The schema objects hazel compares (tables, columns, constraints, indexes, views, triggers)
+- `test/realworld/` - The real-world schema tests: the runner and the loader (see REALWORLD-TESTS.md)
 - `parser/` - Tokenizer, statement splitter, statement classification, CREATE TABLE parsing (what PRAGMAs do not report), identifier quoting and token comparison for schema files
 
 ## Development workflow
