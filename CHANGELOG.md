@@ -4,7 +4,7 @@
 
 ## [Unreleased]
 
-* hazel is generally available. From this release on, a change that breaks an existing use of the commands, their options, the directives or the schema files hazel accepts comes only with a new major version.
+* hazel is generally available.
 
 ## [0.1.0] - 2026-11-14
 
