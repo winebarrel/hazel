@@ -966,7 +966,10 @@ func TestFmtErrors(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CREATE TABLE t (a,b);", string(b))
 
-	// A file that cannot be written.
+	// A file that cannot be written. root can write a read-only file.
+	if os.Geteuid() == 0 {
+		return
+	}
 	require.NoError(t, os.Chmod("good.sql", 0o444))
 	_, errOut, code := hazel(t, "fmt", "good.sql")
 	assert.Equal(t, 1, code)
