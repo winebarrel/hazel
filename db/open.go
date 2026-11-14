@@ -12,7 +12,7 @@ import (
 )
 
 // OpenReadOnly opens the database for reading with PRAGMA query_only. The
-// file must exist; it is never created.
+// file is not created, because it must exist.
 func OpenReadOnly(t Target) (*sql.DB, error) {
 	exists, err := t.Exists()
 	if err != nil {
@@ -21,7 +21,7 @@ func OpenReadOnly(t Target) (*sql.DB, error) {
 	if !exists && !t.memory {
 		return nil, fmt.Errorf("database does not exist: %s", t.path)
 	}
-	return open(t, "PRAGMA query_only = ON")
+	return open(t, "query_only(1)")
 }
 
 // OpenReadWrite opens the database for writing, waiting up to busyTimeout
@@ -37,22 +37,23 @@ func OpenReadWrite(t Target, busyTimeout time.Duration) (*sql.DB, error) {
 			return nil, fmt.Errorf("directory does not exist: %s", dir)
 		}
 	}
-	return open(t, fmt.Sprintf("PRAGMA busy_timeout = %d", busyTimeout.Milliseconds()))
+	return open(t, fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
 }
 
-// open opens the database and runs pragma on its connection. The pool holds
-// one connection, since the pragmas are per connection and an in-memory
-// database is per connection too.
+// open opens the database with pragma set on every connection the pool
+// opens, so that a connection reopened by database/sql keeps it. The pool
+// holds one connection, since an in-memory database is per connection.
 func open(t Target, pragma string) (*sql.DB, error) {
-	// The path goes to the driver as it is, not as a URI: modernc.org/sqlite
-	// passes a plain absolute path to SQLite untouched, except for what
-	// follows a "?", which Resolve refuses.
-	db, err := sql.Open("sqlite", t.String())
+	// The path goes to the driver as it is, not as a URI. modernc.org/sqlite
+	// cuts a plain name at the first "?" and reads what follows as its own
+	// parameters; Resolve refuses "?" in a path, so the "?" here is the only
+	// one.
+	db, err := sql.Open("sqlite", t.String()+"?_pragma="+pragma)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(pragma); err != nil {
+	if err := db.Ping(); err != nil {
 		db.Close() //nolint:errcheck
 		return nil, err
 	}

@@ -4,6 +4,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -135,7 +136,7 @@ func (t Target) Exists() (bool, error) {
 	}
 	defer f.Close() //nolint:errcheck
 	buf := make([]byte, len(header))
-	if _, err := f.Read(buf); err != nil || string(buf) != header {
+	if _, err := io.ReadFull(f, buf); err != nil || string(buf) != header {
 		return false, fmt.Errorf("not a SQLite database: %s", t.path)
 	}
 	return true, nil

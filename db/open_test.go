@@ -87,6 +87,28 @@ func TestOpenReadOnlyNotSQLite(t *testing.T) {
 	assert.ErrorContains(t, err, "not a SQLite database")
 }
 
+func TestOpenPragmaOnEveryConnection(t *testing.T) {
+	target := resolve(t, filepath.Join(t.TempDir(), "app.db"))
+	rw, err := db.OpenReadWrite(target, 1500*time.Millisecond)
+	require.NoError(t, err)
+	defer rw.Close()
+	ro, err := db.OpenReadOnly(target)
+	require.NoError(t, err)
+	defer ro.Close()
+
+	// A connection the pool opens again gets the pragmas too.
+	rw.SetConnMaxLifetime(time.Nanosecond)
+	ro.SetConnMaxLifetime(time.Nanosecond)
+	for range 2 {
+		time.Sleep(time.Millisecond)
+		var timeout, queryOnly int
+		require.NoError(t, rw.QueryRow("PRAGMA busy_timeout").Scan(&timeout))
+		assert.Equal(t, 1500, timeout)
+		require.NoError(t, ro.QueryRow("PRAGMA query_only").Scan(&queryOnly))
+		assert.Equal(t, 1, queryOnly)
+	}
+}
+
 func TestOpenMemory(t *testing.T) {
 	rw, err := db.OpenReadWrite(db.Memory, time.Second)
 	require.NoError(t, err)
