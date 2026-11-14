@@ -2,17 +2,21 @@
 
 # Changelog
 
+## [Unreleased]
+
+* hazel is generally available. From this release on, a change that breaks an existing use of the commands, their options, the directives or the schema files hazel accepts comes only with a new major version.
+
 ## [0.1.0] - 2026-11-14
 
 * A demo image, `ghcr.io/winebarrel/hazel-demo`, bundles hazel, sqlite3 and a sample database: `docker run --rm -it ghcr.io/winebarrel/hazel-demo`.
 
-* A name written in single quotes where SQLite expects a name, such as `CREATE TABLE 'sq' ('b' TEXT)`, is read as that name. Before, a column so written was added with an empty `ADD COLUMN`, a change to its `COLLATE` was missed, and `-- hazel:ignore` and `-- hazel:renamed-from` on a table so written had no effect. `dump` and the CREATE statements hazel runs keep such a name as it is written.
+* A name written in single quotes where SQLite expects a name, such as `CREATE TABLE 'sq' ('b' TEXT)`, is read as that name. `dump` and the CREATE statements hazel runs keep such a name as it is written.
 
 * The output goes through the command in `HAZEL_PAGER`, run with `sh -c` (`cmd /c` on Windows), when it goes to a terminal. `--pager` uses the pager for any output, and `--no-pager` never does; without `HAZEL_PAGER`, neither does anything. The pager starts on the first output, so a command that prints nothing, or fails before it prints, does not open it.
 
 * `plan`, `apply` and `diff` write the CREATE statements they run in the layout of `dump`: a CREATE TABLE has one column or constraint per line, and names lose the quotes they do not need. The statements are kept that way in the database.
 
-* A CREATE statement that ends with a `--` comment gets its `;` on the next line in the output of `plan`, `apply` and `diff`. The `;` was on the line of the comment, which took it in.
+* A CREATE statement that ends with a `--` comment gets its `;` on the next line in the output of `plan`, `apply` and `diff`.
 
 * `hazel fmt SCHEMA_FILE...` lays out the schema files in place, the way `dump` writes the statements. The statements are separated by one blank line, the comments before a statement stay before it, and a comment on the line of a `;` stays on that line. Statements that hazel does not manage and those marked with `-- hazel:execute` are left as they are. The files are loaded together before and after, and nothing is written unless both give the same schema. `--check` writes nothing, prints the files that are not formatted and exits with status 2 when there are any. `--strip-renamed-from` drops the `-- hazel:renamed-from` directives.
 
