@@ -1,4 +1,4 @@
-# hazel
+![](https://github.com/user-attachments/assets/769def2c-85f3-41bf-a2c0-61b6d65a54f9)
 
 [![CI](https://github.com/winebarrel/hazel/actions/workflows/ci.yml/badge.svg)](https://github.com/winebarrel/hazel/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/winebarrel/hazel/graph/badge.svg)](https://codecov.io/gh/winebarrel/hazel)
