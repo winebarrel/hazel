@@ -757,3 +757,79 @@ INSERT INTO c VALUES (1, 99);
 	assert.Contains(t, errOut, "foreign key violations, rolled back: d (rowid 1) refers to a missing row of p")
 	assert.NotContains(t, errOut, "c (rowid 1)")
 }
+
+func TestDump(t *testing.T) {
+	dir := workdir(t, nil)
+	createDB(t, "app.db", `
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE INDEX users_name ON users (name);
+CREATE TABLE tmp_x (a);
+CREATE VIEW v AS SELECT name FROM users;
+`)
+	out, _, code := hazel(t, "dump", "app.db")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "-- Database: "+filepath.Join(dir, "app.db")+`
+-- Dump (2 tables, 1 view, 1 index, 0 triggers)
+
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    name TEXT
+);
+
+CREATE INDEX users_name ON users (name);
+
+CREATE TABLE tmp_x (
+    a
+);
+
+CREATE VIEW v AS SELECT name FROM users;
+`, out)
+
+	// The dump plans clean.
+	require.NoError(t, os.WriteFile("dump.sql", []byte(out), 0o644))
+	_, _, code = hazel(t, "plan", "--check", "app.db", "dump.sql")
+	assert.Equal(t, 0, code)
+
+	out, _, code = hazel(t, "dump", "--no-format", "-E", "tmp_*", "app.db")
+	assert.Equal(t, 0, code)
+	assert.True(t, strings.HasSuffix(out, `
+-- Dump (1 table, 1 view, 1 index, 0 triggers)
+
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+
+CREATE INDEX users_name ON users (name);
+
+CREATE VIEW v AS SELECT name FROM users;
+`), out)
+
+	out, _, code = hazel(t, "dump", ":memory:")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "-- Database: :memory:\n-- Dump (0 tables, 0 views, 0 indexes, 0 triggers)\n", out)
+}
+
+func TestDumpErrors(t *testing.T) {
+	workdir(t, map[string]string{"text.db": "this is not a database"})
+	createDB(t, "broken_view.db", "CREATE TABLE b (x); CREATE VIEW v AS SELECT x FROM b; DROP TABLE b;")
+	tests := []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"dump"}, 80, `expected "<db>"`},
+		{[]string{"dump", "missing.db"}, 1, "missing.db: no such file"},
+		{[]string{"dump", "text.db"}, 1, "not a SQLite database"},
+		{[]string{"dump", "-I", "/(/", "text.db"}, 80, "invalid pattern"},
+		{[]string{"dump", "app.db?mode=ro"}, 1, "must not contain '?'"},
+		{[]string{"dump", "broken_view.db"}, 1, "view v: "},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			_, errOut, code := hazel(t, tt.args...)
+			assert.Equal(t, tt.code, code)
+			assert.Contains(t, errOut, tt.want)
+		})
+	}
+	// dump does not create the file.
+	_, err := os.Stat("missing.db")
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}

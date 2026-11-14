@@ -1,0 +1,13 @@
+# The comments inside a CREATE statement are kept.
+init: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY, -- the rowid
+    /* NULL after the user leaves */
+    deleted_at TEXT
+  );
+dump: |
+  CREATE TABLE users (
+      id INTEGER PRIMARY KEY, -- the rowid
+      /* NULL after the user leaves */
+      deleted_at TEXT
+  );

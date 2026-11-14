@@ -48,8 +48,10 @@ make fix   # golangci-lint run --fix (auto-fix lint errors)
 - `cmd/command/` - CLI command implementations, the -I/-E filter and the YAML config loader
 - `catalog/` - Reads the schema of a database from `sqlite_schema` and the schema PRAGMAs into `model`
 - `db/` - Resolves the DB argument and opens the database
+- `dump/` - Writes a schema as the CREATE statements that make it, for `hazel dump`
 - `diff/` - Computes the plan, the DDL that takes the current schema to the desired one
 - `desired/` - Loads the desired schema: runs the CREATE statements of the schema files in `:memory:` and reads them back with `catalog`
+- `format/` - Lays out a CREATE statement, moving only the whitespace and the quotes of names that do not need them
 - `model/` - The schema objects hazel compares (tables, columns, constraints, indexes, views, triggers)
 - `parser/` - Tokenizer, statement splitter, statement classification, CREATE TABLE parsing (what PRAGMAs do not report), identifier quoting and token comparison for schema files
 
@@ -81,6 +83,7 @@ Leave a change to CI, the build or other repository tooling without a label. Do 
 
 - Package-level tests generally use external test packages (e.g., `package parser_test`). Use same-package tests only when access to unexported identifiers is required.
 - New plan/apply/dump tests should be added as YAML fixtures in `testdata/` whenever the test is purely SQL-input -> SQL/dump-output. Reach for a Go test only when the scenario cannot be expressed that way. When the harness lacks a field for a behavior you want to assert in a fixture, prefer extending the test case struct with one optional field (defaulting to nil/zero so existing fixtures are unaffected) over keeping the test in Go.
+- Dump tests are YAML fixtures in `dump/testdata/`, one case per file: `init` runs on an empty database and `dump` is the expected dump. The dump, formatted and not, is loaded as the schema files and must plan clean against the database.
 - Diff tests are YAML fixtures in `diff/testdata/`, one case per file: `init` runs on an empty database to give the current schema, `desired` is loaded as the schema files, and either `plan` (the expected `Plan.String()`) or `error` (a part of the expected error) is given. Every case with a plan also applies it to the database and requires the diff to be empty afterwards, unless `apply_error` gives a part of the error the apply is expected to fail with.
 - Use `orderedmap.Map` (github.com/winebarrel/orderedmap) for deterministic iteration order of schema objects.
 - Let kong do what kong does. A flag's type, default, allowed values and the combinations it refuses go in its tag, not in code that reads the options back. Write that code only where the answer is not in the flags alone.

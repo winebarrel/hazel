@@ -1,0 +1,17 @@
+# SQLite rewrites the CREATE statements on ALTER TABLE: ADD COLUMN appends to
+# the list, and RENAME TO quotes the new name. The dump lays the table out
+# again and drops the quotes.
+init: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT);
+  CREATE INDEX t_a ON t (a);
+  ALTER TABLE t ADD COLUMN b INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE t RENAME COLUMN a TO c;
+  ALTER TABLE t RENAME TO users;
+dump: |
+  CREATE TABLE users (
+      id INTEGER PRIMARY KEY,
+      c TEXT,
+      b INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE INDEX t_a ON users (c);
