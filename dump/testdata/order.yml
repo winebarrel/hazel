@@ -1,0 +1,39 @@
+# Each table is followed by its indexes and triggers, and the views come
+# last, each followed by its triggers.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+  CREATE VIEW active_users AS SELECT * FROM users WHERE name IS NOT NULL;
+  CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users (id), body TEXT);
+  CREATE INDEX users_name ON users (name);
+  CREATE TRIGGER users_touch AFTER UPDATE ON users BEGIN
+    UPDATE posts SET body = body WHERE user_id = NEW.id;
+  END;
+  CREATE INDEX posts_user_id ON posts (user_id);
+  CREATE TRIGGER active_users_insert INSTEAD OF INSERT ON active_users BEGIN
+    INSERT INTO users (name) VALUES (NEW.name);
+  END;
+dump: |
+  CREATE TABLE users (
+      id INTEGER PRIMARY KEY,
+      name TEXT
+  );
+
+  CREATE INDEX users_name ON users (name);
+
+  CREATE TRIGGER users_touch AFTER UPDATE ON users BEGIN
+    UPDATE posts SET body = body WHERE user_id = NEW.id;
+  END;
+
+  CREATE TABLE posts (
+      id INTEGER PRIMARY KEY,
+      user_id INTEGER REFERENCES users (id),
+      body TEXT
+  );
+
+  CREATE INDEX posts_user_id ON posts (user_id);
+
+  CREATE VIEW active_users AS SELECT * FROM users WHERE name IS NOT NULL;
+
+  CREATE TRIGGER active_users_insert INSTEAD OF INSERT ON active_users BEGIN
+    INSERT INTO users (name) VALUES (NEW.name);
+  END;

@@ -1,0 +1,33 @@
+# Table options, WITHOUT ROWID, STRICT, CHECK, generated columns, partial
+# and expression indexes, and virtual tables.
+init: |
+  CREATE TABLE kv (k TEXT PRIMARY KEY, v BLOB) WITHOUT ROWID, STRICT;
+  CREATE TABLE items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    price INTEGER CHECK (price >= 0),
+    tax INTEGER GENERATED ALWAYS AS (price / 10) VIRTUAL,
+    status TEXT DEFAULT 'active',
+    CONSTRAINT status_values CHECK (status IN ('active', 'closed'))
+  );
+  CREATE INDEX items_active ON items (price) WHERE status = 'active';
+  CREATE UNIQUE INDEX items_lower ON items (lower(status), id DESC);
+  CREATE VIRTUAL TABLE docs USING fts5(title, body);
+dump: |
+  CREATE TABLE kv (
+      k TEXT PRIMARY KEY,
+      v BLOB
+  ) WITHOUT ROWID, STRICT;
+
+  CREATE TABLE items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      price INTEGER CHECK (price >= 0),
+      tax INTEGER GENERATED ALWAYS AS (price / 10) VIRTUAL,
+      status TEXT DEFAULT 'active',
+      CONSTRAINT status_values CHECK (status IN ('active', 'closed'))
+  );
+
+  CREATE INDEX items_active ON items (price) WHERE status = 'active';
+
+  CREATE UNIQUE INDEX items_lower ON items (lower(status), id DESC);
+
+  CREATE VIRTUAL TABLE docs USING fts5(title, body);
