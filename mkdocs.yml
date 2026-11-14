@@ -7,6 +7,10 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  favicon: assets/favicon.ico
+  # The header draws the logo at 24px next to site_name, so this is the nut
+  # mark on its own; the full logo carries the wordmark.
+  logo: assets/logo-mark.svg
   features:
     - navigation.sections
     - navigation.indexes
@@ -28,6 +32,9 @@ theme:
 
 plugins:
   - search
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
