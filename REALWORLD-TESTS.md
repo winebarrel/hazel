@@ -53,10 +53,3 @@ The list is the `REALWORLD_SCHEMAS` variable in `realworld.mk`, one record per l
 | sakila | 16 tables, 5 views, 24 indexes, 30 triggers | [jOOQ/sakila](https://github.com/jOOQ/sakila) |
 | temporal | 37 tables | [temporalio/temporal](https://github.com/temporalio/temporal) |
 | zotero | 54 tables, 38 indexes | [zotero/zotero](https://github.com/zotero/zotero) |
-
-## Schemas left out
-
-| Project | Why |
-| --- | --- |
-| [calibre](https://github.com/kovidgoyal/calibre) (`resources/metadata_sqlite.sql`) | Its views call `sortconcat` and other functions that calibre registers with SQLite. Application-defined functions are out of hazel's scope, and a view that calls one cannot be read. |
-| [synapse](https://github.com/element-hq/synapse) (`full.sql.sqlite`) | It creates an `fts4` virtual table, and modernc.org/sqlite is built without FTS3/FTS4, so the file does not load. |
