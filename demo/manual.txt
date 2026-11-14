@@ -9,9 +9,7 @@ Try the following:
   hazel plan  --allow-table-rebuild demo.db desired.sql
                                     # show the DDL diff
   # hazel plan demo.db desired.sql
-                                    # fails without
-                                    # --allow-table-rebuild:
-                                    # posts needs a rebuild
+  #   fails without --allow-table-rebuild: posts needs a rebuild
   hazel apply --allow-table-rebuild demo.db desired.sql
                                     # apply the changes
   hazel plan  demo.db desired.sql   # ...should now print
