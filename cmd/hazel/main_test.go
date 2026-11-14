@@ -935,9 +935,10 @@ func TestFmt(t *testing.T) {
 	assert.Equal(t, "tables.sql\n", out)
 	assert.Empty(t, errOut)
 
+	// The files that are rewritten are named.
 	out, _, code = hazel(t, "fmt", "tables.sql", "views.sql")
 	assert.Equal(t, 0, code)
-	assert.Empty(t, out)
+	assert.Equal(t, "tables.sql\n", out)
 	b, err := os.ReadFile("tables.sql")
 	require.NoError(t, err)
 	assert.Equal(t, "-- hazel:renamed-from members\nCREATE TABLE users (\n    id INTEGER PRIMARY KEY,\n    name TEXT\n);\n", string(b))
@@ -947,8 +948,12 @@ func TestFmt(t *testing.T) {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	}
 
-	_, _, code = hazel(t, "fmt", "--check", "tables.sql", "views.sql")
+	out, _, code = hazel(t, "fmt", "--check", "tables.sql", "views.sql")
 	assert.Equal(t, 0, code)
+	assert.Empty(t, out)
+	out, _, code = hazel(t, "fmt", "tables.sql", "views.sql")
+	assert.Equal(t, 0, code)
+	assert.Empty(t, out)
 
 	_, _, code = hazel(t, "fmt", "--strip-renamed-from", "tables.sql")
 	assert.Equal(t, 0, code)
@@ -985,14 +990,44 @@ func TestFmtErrors(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "CREATE TABLE t (a,b);", string(b))
 
-	// A file that cannot be written. root can write a read-only file.
-	if os.Geteuid() == 0 {
+	// A file in a directory that cannot be written: the file is replaced by
+	// a new one next to it. root can write there anyway, and Windows does
+	// not take the directory's mode.
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
 		return
 	}
-	require.NoError(t, os.Chmod("good.sql", 0o444))
-	_, errOut, code := hazel(t, "fmt", "good.sql")
+	require.NoError(t, os.Mkdir("ro", 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join("ro", "s.sql"), []byte("CREATE TABLE t (a,b);"), 0o644))
+	require.NoError(t, os.Chmod("ro", 0o555))
+	t.Cleanup(func() { os.Chmod("ro", 0o755) }) //nolint:errcheck
+	_, errOut, code := hazel(t, "fmt", filepath.Join("ro", "s.sql"))
 	assert.Equal(t, 1, code)
-	assert.Contains(t, errOut, "good.sql")
+	assert.Contains(t, errOut, "s.sql")
+	b, err = os.ReadFile(filepath.Join("ro", "s.sql"))
+	require.NoError(t, err)
+	assert.Equal(t, "CREATE TABLE t (a,b);", string(b))
+}
+
+// fmt writes the file a symlink points at, and leaves the link a link.
+func TestFmtSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	workdir(t, map[string]string{"real.sql": "CREATE TABLE t (a,b);"})
+	require.NoError(t, os.Symlink("real.sql", "link.sql"))
+	out, _, code := hazel(t, "fmt", "link.sql")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "link.sql\n", out)
+	info, err := os.Lstat("link.sql")
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&os.ModeSymlink)
+	b, err := os.ReadFile("real.sql")
+	require.NoError(t, err)
+	assert.Equal(t, "CREATE TABLE t (\n    a,\n    b\n);\n", string(b))
+	// No temporary file is left behind.
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+	assert.Len(t, entries, 2)
 }
 
 // hazelToFile runs the command with its standard output going to a file, as
@@ -1052,6 +1087,9 @@ func TestPager(t *testing.T) {
 	// The pager starts on the first output: not for a command that writes
 	// nothing, nor for an error before any output.
 	t.Setenv("HAZEL_PAGER", "echo started; cat")
+	// fmt on a file already formatted prints nothing.
+	_, _, code = hazel(t, "fmt", "schema.sql")
+	require.Equal(t, 0, code)
 	out, code = hazelToFile(t, "--pager", "fmt", "schema.sql")
 	assert.Equal(t, 0, code)
 	assert.Empty(t, out)
