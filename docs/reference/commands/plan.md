@@ -5,14 +5,15 @@ plan -- print the DDL that takes a database to the schema files
 ## Synopsis
 
 ```
-hazel plan [-I PAT]... [-E PAT]... [--allow-table-rebuild] [--check] DB SCHEMA_FILE...
+hazel plan [-I PAT]... [-E PAT]... [--allow-table-rebuild] [--check] [--no-create]
+           DB SCHEMA_FILE...
 ```
 
 ## Description
 
 `plan` reads the schema of the database `DB`, loads the schema files, and prints the DDL that takes the database to the schema of the files. It does not change the database; the database is opened read-only.
 
-A database file that does not exist is taken as an empty database, and is not created. The first line of the output then says `(new file)`.
+A database file that does not exist is taken as an empty database, and is not created. The first line of the output then says `(new file)`. With `--no-create`, it is an error instead.
 
 The output is SQL that can be read as a script:
 
@@ -69,6 +70,9 @@ The condition of an execute statement is evaluated against the database as it is
 
 `--check`
 :   Exit with status 2 when there are changes. With a rebuild that is not allowed as well, the status is 2.
+
+`--no-create`
+:   Fail when the database file does not exist, instead of taking it as an empty database. An in-memory database is not affected.
 
 ## Filtering
 

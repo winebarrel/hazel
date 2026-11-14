@@ -2,6 +2,10 @@
 
 # Changelog
 
+## [Unreleased]
+
+* `plan --no-create` and `apply --no-create` fail when the database file does not exist, instead of taking it as an empty database or creating it. `HAZEL_NO_CREATE` and `no-create` in the configuration file set it too.
+
 ## [1.2.0] - 2026-11-15
 
 * `fmt` prints the name of each file it rewrites, as `--check` prints the files it would rewrite. It writes a file by renaming a new one over it, so a failure partway through leaves the file as it was; the directory of the file must be writable.
