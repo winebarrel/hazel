@@ -35,11 +35,12 @@ The container starts a shell in `/demo`, where `demo.db` holds the schema of `cu
 
 ```bash
 hazel plan  --allow-table-rebuild demo.db desired.sql    # show the DDL diff
-# hazel plan demo.db desired.sql                         # fails without --allow-table-rebuild: posts needs a rebuild
 hazel apply --allow-table-rebuild demo.db desired.sql    # apply the changes
 hazel plan  demo.db desired.sql                          # ...should now print -- No changes
 hazel dump  demo.db                                      # dump the current schema
 ```
+
+`desired.sql` changes the type of a column of `posts`, which needs a rebuild of the table, so `plan` and `apply` fail without `--allow-table-rebuild`.
 
 The source for the image is under [`demo/`](https://github.com/winebarrel/hazel/tree/main/demo).
 
