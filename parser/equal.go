@@ -1,13 +1,17 @@
 package parser
 
-// TokensEqual reports whether two token sequences are the same once the
-// differences that SQLite ignores are removed:
+// TokensEqual reports whether two token sequences are the same once these
+// differences are removed:
 //
 //   - Whitespace and comments are skipped.
 //   - Identifiers and keywords are compared without ASCII case, and a quoted
 //     identifier is compared without its quotes, so "t", [t], `t` and T are
 //     the same.
 //   - Every other token (operators, strings, numbers) is compared as written.
+//
+// A quoted keyword is taken for the keyword, so "end" equals END even though
+// SQLite reads the first as an identifier. Two definitions that differ only
+// there are too rare to tell apart.
 //
 // It is used for what SQLite keeps as text and hazel does not compile: type
 // names, collation names and trigger definitions.

@@ -133,9 +133,11 @@ func TestTokenizeError(t *testing.T) {
 		src  string
 		want string
 	}{
-		{"'abc", "line 1: unterminated '-quoted token"},
-		{"a\n\"abc", "line 2: unterminated \"-quoted token"},
-		{"[abc", "line 1: unterminated identifier"},
+		{"'abc", "line 1: unterminated string: '"},
+		{"a\n\"abc", "line 2: unterminated identifier: \""},
+		{"`abc", "line 1: unterminated identifier: `"},
+		{"[abc", "line 1: unterminated identifier: ["},
+		{"x'ab", "line 1: unterminated blob: '"},
 		{"12abc", `line 1: unrecognized token: "12a"`},
 		{"a ! b", `line 1: unrecognized token: "!"`},
 		{"a : b", `line 1: unrecognized token: ":"`},

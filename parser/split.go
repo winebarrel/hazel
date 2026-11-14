@@ -24,10 +24,11 @@ func (s Statement) IsEmpty() bool {
 	return true
 }
 
-// Split splits tokens into statements at each ";". The ";" inside the body of
-// a CREATE TRIGGER does not end the statement: it runs to the END of the
-// body. Inside a trigger, CASE ... END pairs are counted so that the END of a
-// CASE expression is not taken for the END of the body.
+// Split splits tokens into statements at each ";". A CREATE TRIGGER does not
+// end at the ";" inside its body: like sqlite3_complete() (src/complete.c), it
+// ends at the ";" of a ";" END ";" sequence. A body cannot be empty, and the
+// END of a CASE expression never comes right after a ";", so an END there is
+// always the end of the body, even where END is used as an identifier.
 //
 // Whitespace and comments after the last statement are returned as a
 // statement of their own, which IsEmpty reports.
@@ -56,17 +57,16 @@ func Split(tokens []Token) []Statement {
 // splitState follows the significant tokens of one statement to tell whether
 // a ";" ends it.
 type splitState struct {
-	n         int  // significant tokens seen
-	create    bool // the statement starts with CREATE
-	temp      bool // the second token is TEMP or TEMPORARY
-	trigger   bool // the statement is a CREATE TRIGGER
-	inBody    bool // past the BEGIN of the trigger body
-	bodyEnded bool // past the END of the trigger body
-	caseDepth int  // CASE expressions open
+	n       int  // significant tokens seen
+	create  bool // the statement starts with CREATE
+	temp    bool // the second token is TEMP or TEMPORARY
+	trigger bool // the statement is a CREATE TRIGGER
+	semi    bool // in a trigger, the last token was ";"
+	end     bool // in a trigger, the last tokens were ";" END
 }
 
 func (st *splitState) canEnd() bool {
-	return !st.trigger || st.bodyEnded
+	return !st.trigger || st.end
 }
 
 func (st *splitState) next(t Token) {
@@ -88,17 +88,8 @@ func (st *splitState) next(t Token) {
 		}
 		return
 	}
-	if !st.trigger {
-		return
-	}
-	switch {
-	case t.IsKeyword("CASE"):
-		st.caseDepth++
-	case t.IsKeyword("END") && st.caseDepth > 0:
-		st.caseDepth--
-	case t.IsKeyword("BEGIN") && !st.inBody:
-		st.inBody = true
-	case t.IsKeyword("END") && st.inBody:
-		st.bodyEnded = true
+	if st.trigger {
+		st.end = st.semi && t.IsKeyword("END")
+		st.semi = t.IsPunct(";")
 	}
 }

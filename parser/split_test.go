@@ -70,6 +70,20 @@ func TestSplit(t *testing.T) {
 			},
 		},
 		{
+			name: "end as an identifier in trigger body",
+			src: "CREATE TRIGGER tr AFTER INSERT ON a BEGIN UPDATE a SET end = 1; INSERT INTO b VALUES (new.end); END;\n" +
+				"CREATE TABLE c (z);",
+			want: []string{
+				"CREATE TRIGGER tr AFTER INSERT ON a BEGIN UPDATE a SET end = 1; INSERT INTO b VALUES (new.end); END;",
+				"CREATE TABLE c (z);",
+			},
+		},
+		{
+			name: "end of case right before the end of the body",
+			src:  "CREATE TRIGGER tr AFTER INSERT ON a BEGIN SELECT CASE WHEN 1 THEN 2 END; END; SELECT 1;",
+			want: []string{"CREATE TRIGGER tr AFTER INSERT ON a BEGIN SELECT CASE WHEN 1 THEN 2 END; END;", "SELECT 1;"},
+		},
+		{
 			name: "not a create trigger",
 			src:  "DROP TRIGGER tr; SELECT 1;",
 			want: []string{"DROP TRIGGER tr;", "SELECT 1;"},

@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -48,22 +49,19 @@ func scan(s string) (Kind, int, error) {
 		}
 		return Comment, n + 4, nil
 	case c == '\'':
-		n, err := scanQuoted(s, '\'')
+		n, err := scanQuoted(s, '\'', "string")
 		return String, n, err
-	case c == '"':
-		n, err := scanQuoted(s, '"')
-		return QuotedIdent, n, err
-	case c == '`':
-		n, err := scanQuoted(s, '`')
+	case c == '"' || c == '`':
+		n, err := scanQuoted(s, c, "identifier")
 		return QuotedIdent, n, err
 	case c == '[':
 		n := strings.IndexByte(s, ']')
 		if n < 0 {
-			return 0, 0, fmt.Errorf("unterminated identifier: %s", s)
+			return 0, 0, errors.New("unterminated identifier: [")
 		}
 		return QuotedIdent, n + 1, nil
 	case (c == 'x' || c == 'X') && len(s) > 1 && s[1] == '\'':
-		n, err := scanQuoted(s[1:], '\'')
+		n, err := scanQuoted(s[1:], '\'', "blob")
 		return Blob, n + 1, err
 	case isDigit(c) || (c == '.' && len(s) > 1 && isDigit(s[1])):
 		return scanNumber(s)
@@ -93,8 +91,9 @@ func scan(s string) (Kind, int, error) {
 }
 
 // scanQuoted returns the length of a token quoted with q, where a doubled q
-// stands for one q.
-func scanQuoted(s string, q byte) (int, error) {
+// stands for one q. The error names only the kind of the token and its quote,
+// since the rest of the source can be long.
+func scanQuoted(s string, q byte, what string) (int, error) {
 	for i := 1; i < len(s); i++ {
 		if s[i] != q {
 			continue
@@ -105,7 +104,7 @@ func scanQuoted(s string, q byte) (int, error) {
 		}
 		return i + 1, nil
 	}
-	return 0, fmt.Errorf("unterminated %c-quoted token: %s", q, s)
+	return 0, fmt.Errorf("unterminated %s: %c", what, q)
 }
 
 // scanNumber returns the length of a numeric literal: an integer, a real with
