@@ -1,0 +1,15 @@
+# An existing column made NOT NULL gets the backfill in the rows where it is
+# NULL. The rows that hold a value keep it.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+  INSERT INTO users VALUES (1, NULL), (2, 'Bob');
+desired: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    -- hazel:backfill 'user-' || id
+    name TEXT NOT NULL
+  );
+plan: |
+  -- backfill: name
+  UPDATE users SET name = ('user-' || id) WHERE name IS NULL;
+  ALTER TABLE users ALTER COLUMN name SET NOT NULL;

@@ -19,6 +19,7 @@ A directive on the line of the `;` or the `,` before it is an error: written the
 | [`ignore`](#ignore) | `CREATE TABLE`, `CREATE VIRTUAL TABLE`, `CREATE VIEW` |
 | [`execute [CONDITION]`](#execute) | Any statement |
 | [`skip-foreign-key-check`](#skip-foreign-key-check) | `CREATE TABLE` |
+| [`backfill EXPRESSION`](#backfill) | A column of a `CREATE TABLE` |
 
 ## renamed-from
 
@@ -80,3 +81,47 @@ CREATE TABLE events (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users (i
 ```
 
 `apply` leaves the table out of the `PRAGMA foreign_key_check` it runs before the commit. Use it for a table that held rows breaking a foreign key before hazel managed it. `apply --skip-foreign-key-check` turns the check off for the whole database.
+
+## backfill
+
+```sql
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT,
+    -- hazel:backfill first_name || ' ' || last_name
+    full_name TEXT NOT NULL
+);
+```
+
+`EXPRESSION` is an SQL expression evaluated for each row, which can read the other columns of the row. It fills the rows already in the table in two cases:
+
+- When the plan adds the column, every existing row gets the value.
+- When the plan makes an existing column `NOT NULL`, the rows where the column is NULL get the value. The rows that hold a value keep it.
+
+In any other case the directive does nothing, so it can stay in the file.
+
+hazel fills the rows with an `UPDATE`. A column added with `ALTER TABLE` is added without its `NOT NULL`, filled, and then made `NOT NULL`:
+
+```
+ALTER TABLE users ADD COLUMN full_name TEXT;
+-- backfill: full_name
+UPDATE users SET full_name = (first_name || ' ' || last_name);
+ALTER TABLE users ALTER COLUMN full_name SET NOT NULL;
+```
+
+An existing column made `NOT NULL` is filled where it is NULL:
+
+```
+-- backfill: name
+UPDATE users SET name = ('user-' || id) WHERE name IS NULL;
+ALTER TABLE users ALTER COLUMN name SET NOT NULL;
+```
+
+So a `NOT NULL` column with no `DEFAULT` can be added to a table that has rows, and a column that holds NULLs can be made `NOT NULL`. The `UPDATE` writes every row it fills, so on a large table it takes as long as the same `UPDATE` written by hand, and it runs the `UPDATE` triggers of the table.
+
+When the table is rebuilt, no `UPDATE` runs: the copy fills the column, with the expression for an added column and with `coalesce(name, (EXPRESSION))` for a column made `NOT NULL`.
+
+The `DEFAULT` of the column still applies to the rows inserted later. To give the existing rows and the later ones the same constant when a column is added, write a `DEFAULT` instead: SQLite adds such a column without touching the rows. A `DEFAULT` does not fill the NULLs of an existing column.
+
+A generated column cannot be backfilled. The expression is not checked by hazel; an error in it fails `apply`.

@@ -1,0 +1,16 @@
+# A column that is not NOT NULL is added and filled. The DEFAULT applies to
+# the rows inserted later.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT);
+  INSERT INTO users VALUES (1, 'A@example.com');
+desired: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    email TEXT,
+    -- hazel:backfill lower(email)
+    email_key TEXT DEFAULT ''
+  );
+plan: |
+  ALTER TABLE users ADD COLUMN email_key TEXT DEFAULT '';
+  -- backfill: email_key
+  UPDATE users SET email_key = (lower(email));

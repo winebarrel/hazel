@@ -248,6 +248,10 @@ func TestLoadDirectiveErrors(t *testing.T) {
 		{"directive after a statement", "CREATE TABLE a (x); -- hazel:ignore\nCREATE TABLE b (y);", "schema.sql:1: hazel:ignore is on the line of what comes before it; write it on a line of its own"},
 		{"directive after a column", "CREATE TABLE t (\n  a, -- hazel:renamed-from x\n  b\n);", "schema.sql:2: hazel:renamed-from is on the line of what comes before it; write it on a line of its own"},
 		{"ignore on a column", "CREATE TABLE t (\n  -- hazel:ignore\n  a\n);", "schema.sql:2: hazel:ignore cannot be written before a column or a table constraint"},
+		{"backfill on a table", "-- hazel:backfill 1\nCREATE TABLE t (a);", "schema.sql:1: hazel:backfill is for a column"},
+		{"backfill without an expression", "CREATE TABLE t (\n  -- hazel:backfill\n  a\n);", "schema.sql:2: hazel:backfill needs an expression"},
+		{"backfill on a table constraint", "CREATE TABLE t (\n  a,\n  -- hazel:backfill 1\n  CHECK (a > 0)\n);", "schema.sql:3: hazel:backfill cannot be written before a column or a table constraint"},
+		{"backfill on a generated column", "CREATE TABLE t (\n  a,\n  -- hazel:backfill 1\n  g AS (a)\n);", "schema.sql:3: hazel:backfill cannot fill a generated column: g"},
 		{"renamed-from on a constraint", "CREATE TABLE t (\n  a,\n  -- hazel:renamed-from c\n  CHECK (a > 0)\n);", "schema.sql:3: hazel:renamed-from cannot be written before a column or a table constraint"},
 	}
 	for _, tt := range tests {

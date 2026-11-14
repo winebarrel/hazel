@@ -1,0 +1,21 @@
+# When the table is rebuilt, the copy fills the column.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name INT);
+  INSERT INTO users VALUES (1, 10);
+desired: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    -- hazel:backfill 'user-' || id
+    slug TEXT NOT NULL
+  );
+plan: |
+  -- table rebuild: users (type of name; adds column slug)
+  CREATE TABLE new_users (
+      id INTEGER PRIMARY KEY,
+      name TEXT,
+      slug TEXT NOT NULL
+  );
+  INSERT INTO new_users (id, name, slug) SELECT id, name, ('user-' || id) FROM users;
+  DROP TABLE users;
+  ALTER TABLE new_users RENAME TO users;

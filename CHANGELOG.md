@@ -2,6 +2,10 @@
 
 # Changelog
 
+## [Unreleased]
+
+* The `-- hazel:backfill EXPRESSION` directive on a column fills the rows already in the table with the value of the expression, when the plan adds the column or makes it `NOT NULL`. An added column is filled in every row and a column made `NOT NULL` in the rows where it is NULL, with an `UPDATE` before the `SET NOT NULL`, or by the copy when the table is rebuilt. So a `NOT NULL` column with no `DEFAULT` can be added to a table that has rows, and a column that holds NULLs can be made `NOT NULL`.
+
 ## [1.0.0] - 2026-11-14
 
 * hazel is generally available.

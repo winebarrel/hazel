@@ -35,10 +35,21 @@ func (d *differ) rebuild(cur, des *model.Table, changes []string) {
 	copiesAlias := false
 	for key, dc := range des.Columns.All() {
 		c, ok := cur.Columns.GetOk(key)
-		if ok && dc.Generated == model.NotGenerated {
+		switch {
+		case dc.Generated != model.NotGenerated:
+		case ok:
 			to = append(to, q(dc.Name))
-			from = append(from, q(c.Name))
+			if dc.NotNull && !c.NotNull && dc.Backfill != "" {
+				// The NULLs of a column made NOT NULL take the backfill.
+				from = append(from, "coalesce("+q(c.Name)+", ("+dc.Backfill+"))")
+			} else {
+				from = append(from, q(c.Name))
+			}
 			copiesAlias = copiesAlias || model.Key(dc.Name) == model.Key(des.RowidAlias)
+		case dc.Backfill != "":
+			// A new column with -- hazel:backfill is filled by the copy.
+			to = append(to, q(dc.Name))
+			from = append(from, "("+dc.Backfill+")")
 		}
 	}
 	// The rowids are kept, since an FTS5 external-content table or the

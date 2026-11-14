@@ -1,0 +1,19 @@
+# A NOT NULL column with no DEFAULT cannot be added to a table with rows.
+# With -- hazel:backfill, it is added without NOT NULL, filled, and then
+# made NOT NULL.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT);
+  INSERT INTO users VALUES (1, 'Ada', 'Lovelace');
+desired: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT,
+    -- hazel:backfill first_name || ' ' || last_name
+    full_name TEXT NOT NULL CHECK (full_name <> '')
+  );
+plan: |
+  ALTER TABLE users ADD COLUMN full_name TEXT CHECK (full_name <> '');
+  -- backfill: full_name
+  UPDATE users SET full_name = (first_name || ' ' || last_name);
+  ALTER TABLE users ALTER COLUMN full_name SET NOT NULL;

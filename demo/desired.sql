@@ -4,26 +4,34 @@
 --    hazel plan demo.db desired.sql
 -- ============================================================
 
--- Renamed name to display_name, and added bio.
+-- Renamed name to display_name, and added bio and handle. handle is
+-- NOT NULL with no DEFAULT, so the existing rows are filled from
+-- display_name.
 CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     -- hazel:renamed-from name
     display_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     bio TEXT,
+    -- hazel:backfill lower(replace(display_name, ' ', '_'))
+    handle TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- views is now an INTEGER, which needs a rebuild of the table
--- (--allow-table-rebuild); added updated_at and a CHECK on status.
+-- (--allow-table-rebuild); body is now NOT NULL, with '' in the draft
+-- that had none; added updated_at, filled from created_at, and a CHECK
+-- on status.
 CREATE TABLE posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users (id),
     title TEXT NOT NULL,
-    body TEXT,
+    -- hazel:backfill ''
+    body TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft',
     views INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- hazel:backfill created_at
     updated_at TEXT,
     CONSTRAINT posts_status CHECK (status IN ('draft', 'published', 'archived'))
 );

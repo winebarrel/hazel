@@ -2,6 +2,7 @@ package diff
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/winebarrel/hazel/model"
 	"github.com/winebarrel/hazel/parser"
@@ -222,7 +223,10 @@ func (d *differ) alterTable(cur, des *model.Table) {
 		changes = append(changes, "CHECK constraint")
 	}
 
-	var dropColumns, notNull []string
+	var dropColumns []string
+	// notNull holds the statements that change NOT NULL, with the backfill
+	// that comes before a SET NOT NULL.
+	var notNull []item
 	for key, c := range cur.Columns.All() {
 		dc, ok := des.Columns.GetOk(key)
 		if !ok {
@@ -237,8 +241,14 @@ func (d *differ) alterTable(cur, des *model.Table) {
 			change := "DROP NOT NULL"
 			if dc.NotNull {
 				change = "SET NOT NULL"
+				if dc.Backfill != "" {
+					notNull = append(notNull, item{
+						"backfill: " + dc.Name,
+						"UPDATE " + q(cur.Name) + " SET " + q(c.Name) + " = (" + dc.Backfill + ") WHERE " + q(c.Name) + " IS NULL",
+					})
+				}
 			}
-			notNull = append(notNull, "ALTER COLUMN "+q(c.Name)+" "+change)
+			notNull = append(notNull, item{"", "ALTER TABLE " + q(cur.Name) + " ALTER COLUMN " + q(c.Name) + " " + change})
 			changes = append(changes, "NOT NULL of "+dc.Name)
 		}
 	}
@@ -277,11 +287,24 @@ func (d *differ) alterTable(cur, des *model.Table) {
 	if len(added) > 0 {
 		defs := columnDefinitions(des.SQL)
 		for _, key := range added {
-			d.b.add(alterTables, "", alter+"ADD COLUMN "+defs[key].SQL())
+			c := des.Columns.Get(key)
+			if c.Backfill == "" {
+				d.b.add(alterTables, "", alter+"ADD COLUMN "+defs[key].SQL())
+				continue
+			}
+			// A NOT NULL column is added without its NOT NULL, which the
+			// existing rows would break before they are filled, and gets it
+			// back once they are.
+			def, notNull := withoutNotNull(defs[key])
+			d.b.add(alterTables, "", alter+"ADD COLUMN "+def)
+			d.b.add(alterTables, "backfill: "+c.Name, "UPDATE "+q(cur.Name)+" SET "+q(c.Name)+" = ("+c.Backfill+")")
+			if notNull != "" {
+				d.b.add(alterTables, "", alter+"ALTER COLUMN "+q(c.Name)+" SET "+notNull)
+			}
 		}
 	}
-	for _, change := range notNull {
-		d.b.add(alterTables, "", alter+change)
+	for _, it := range notNull {
+		d.b.add(alterTables, it.comment, it.stmt)
 	}
 	for _, c := range addChecks {
 		constraint := ""
@@ -338,6 +361,61 @@ func isConstant(dflt string) bool {
 		return !t.IsKeyword("CURRENT_TIME") && !t.IsKeyword("CURRENT_DATE") && !t.IsKeyword("CURRENT_TIMESTAMP")
 	}
 	return false
+}
+
+// withoutNotNull returns the text of a column definition without its NOT
+// NULL constraint, with the CONSTRAINT name and the ON CONFLICT clause that
+// go with it, and that constraint as SET NOT NULL takes it: "NOT NULL" and
+// any ON CONFLICT clause. It returns "" for the latter when the column has
+// no NOT NULL.
+func withoutNotNull(e parser.TableElement) (string, string) {
+	tokens := e.Tokens
+	var sig []int // indexes of the significant tokens outside parentheses
+	depth := 0
+	for i, t := range tokens {
+		switch {
+		case t.IsTrivia():
+		case t.IsPunct("("):
+			depth++
+		case t.IsPunct(")"):
+			depth--
+		case depth == 0:
+			sig = append(sig, i)
+		}
+	}
+	tok := func(k int) parser.Token {
+		if k < len(sig) {
+			return tokens[sig[k]]
+		}
+		return parser.Token{}
+	}
+	for k := range sig {
+		if !tok(k).IsKeyword("NOT") || !tok(k+1).IsKeyword("NULL") {
+			continue
+		}
+		start, end := k, k+1
+		if k >= 2 && tok(k-2).IsKeyword("CONSTRAINT") {
+			start = k - 2
+		}
+		if tok(end+1).IsKeyword("ON") && tok(end+2).IsKeyword("CONFLICT") {
+			end += 3
+		}
+		var clause []string
+		for j := k; j <= end; j++ {
+			clause = append(clause, tok(j).Text)
+		}
+		// Drop the tokens, and the whitespace before them.
+		from, to := sig[start], sig[end]+1
+		if from > 0 && tokens[from-1].Kind == parser.Space {
+			from--
+		}
+		var b strings.Builder
+		for _, t := range slices.Concat(tokens[:from], tokens[to:]) {
+			b.WriteString(t.Text)
+		}
+		return b.String(), strings.Join(clause, " ")
+	}
+	return e.SQL(), ""
 }
 
 // columnDefinitions returns each column definition of a CREATE TABLE, keyed

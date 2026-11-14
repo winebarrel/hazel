@@ -40,7 +40,7 @@ SQLite's `ALTER TABLE` can rename a table or a column, add or drop a column, add
 | Add a column with `PRIMARY KEY` or `UNIQUE`, a `STORED` generated column, or a column whose `DEFAULT` is not a constant | Rebuild |
 | Drop a column that is in the `PRIMARY KEY` or a `UNIQUE` constraint, or that an unnamed constraint or a remaining generated column refers to | Rebuild |
 
-`SET NOT NULL` and `ADD CHECK` check the existing rows, and fail when one breaks the constraint. Adding a `NOT NULL` column without a non-NULL `DEFAULT` fails when the table has rows.
+`SET NOT NULL` and `ADD CHECK` check the existing rows, and fail when one breaks the constraint. Adding a `NOT NULL` column without a non-NULL `DEFAULT` fails when the table has rows. A [`-- hazel:backfill`](directives.md#backfill) on the column fills those rows first, with an `UPDATE`.
 
 A table that needs a rebuild gets no `ALTER TABLE`: the new table is created from the schema file, so it takes every change at once. Name constraints that may have to be dropped later: a named one can be dropped with `ALTER TABLE`, an unnamed one only by a rebuild.
 
@@ -57,7 +57,7 @@ ALTER TABLE new_users RENAME TO users;
 CREATE INDEX users_name ON users (name);
 ```
 
-- The columns that are in both the old and the new table are copied. A new column takes its `DEFAULT`.
+- The columns that are in both the old and the new table are copied. A new column takes its `DEFAULT`, or the value of its [`-- hazel:backfill`](directives.md#backfill), which also fills the NULLs of a column made `NOT NULL`.
 - In a rowid table without an `INTEGER PRIMARY KEY`, the `rowid` is copied as well, so the rowids do not change.
 - With `AUTOINCREMENT`, the value in `sqlite_sequence` is carried over.
 - The indexes and triggers of the table are created again, and the views and triggers that depend on it are dropped first and created again after.

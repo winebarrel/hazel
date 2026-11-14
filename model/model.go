@@ -95,6 +95,10 @@ type Column struct {
 	// RenamedFrom is the old name given by a -- hazel:renamed-from
 	// directive, or "". It is set on the desired side only.
 	RenamedFrom string
+	// Backfill is the expression given by a -- hazel:backfill directive, or
+	// "": the value the existing rows get when the column is added. It is set
+	// on the desired side only.
+	Backfill string
 }
 
 // IndexColumn is one key of an index, a PRIMARY KEY or a UNIQUE constraint.

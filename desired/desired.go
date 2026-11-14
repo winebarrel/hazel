@@ -115,6 +115,7 @@ func Load(ctx context.Context, srcs []Source) (*Result, error) {
 		tableRename:  map[string]string{},
 		skipFKCheck:  map[string]bool{},
 		columnRename: map[string]map[string]string{},
+		backfill:     map[string]map[string]backfill{},
 	}
 	for _, src := range srcs {
 		if err := l.read(src); err != nil {
@@ -134,7 +135,9 @@ func Load(ctx context.Context, srcs []Source) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	l.mark(schema)
+	if err := l.mark(schema); err != nil {
+		return nil, err
+	}
 	l.result.Schema = schema
 	return l.result, nil
 }
@@ -153,6 +156,16 @@ type loader struct {
 	// columnRename maps a table's key and a column's key to the column's old
 	// name.
 	columnRename map[string]map[string]string
+	// backfill maps a table's key and a column's key to the column's
+	// -- hazel:backfill.
+	backfill map[string]map[string]backfill
+}
+
+// backfill is a -- hazel:backfill directive and where it is written.
+type backfill struct {
+	expr string
+	file string
+	line int
 }
 
 func (l *loader) read(src Source) error {
@@ -208,6 +221,8 @@ func (l *loader) readStatement(file string, stmt parser.Statement) error {
 				l.ignored[kind] = map[string]bool{}
 			}
 			l.ignored[kind][key] = true
+		case parser.Backfill:
+			return misplaced(d, "a column")
 		case parser.SkipForeignKeyCheck:
 			if kind != parser.CreateTable {
 				return misplaced(d, "a table")
@@ -242,7 +257,7 @@ func (l *loader) readStatement(file string, stmt parser.Statement) error {
 }
 
 // readColumns reads the directives of the column definitions. Only
-// -- hazel:renamed-from can be written there.
+// -- hazel:renamed-from and -- hazel:backfill can be written there.
 func (l *loader) readColumns(file, table string, stmt parser.Statement) error {
 	for _, e := range parser.TableElements(stmt) {
 		ds, err := e.Directives()
@@ -251,9 +266,18 @@ func (l *loader) readColumns(file, table string, stmt parser.Statement) error {
 		}
 		for _, d := range ds {
 			switch {
-			case d.Name != parser.RenamedFrom || e.Column == "":
+			case d.Name != parser.RenamedFrom && d.Name != parser.Backfill || e.Column == "":
 				return fmt.Errorf("%s:%d: %s%s cannot be written before a column or a table constraint",
 					file, d.Line, parser.DirectivePrefix, d.Name)
+			case d.Name == parser.Backfill:
+				if d.Arg == "" {
+					return fmt.Errorf("%s:%d: %s%s needs an expression", file, d.Line, parser.DirectivePrefix, d.Name)
+				}
+				if l.backfill[table] == nil {
+					l.backfill[table] = map[string]backfill{}
+				}
+				l.backfill[table][model.Key(e.Column)] = backfill{expr: d.Arg, file: file, line: d.Line}
+				continue
 			}
 			name, ok := parser.ParseName(d.Arg)
 			if !ok {
@@ -273,19 +297,28 @@ func needsName(file string, d parser.Directive) error {
 	return fmt.Errorf("%s:%d: %s%s needs one name, the old one, as it is written in SQL", file, d.Line, parser.DirectivePrefix, d.Name)
 }
 
-// mark puts the directives on the schema read back.
-func (l *loader) mark(s *model.Schema) {
+// mark puts the directives on the schema read back. A backfill of a
+// generated column, which has no value of its own to fill, is an error.
+func (l *loader) mark(s *model.Schema) error {
 	for key, t := range s.Tables.All() {
 		t.RenamedFrom = l.tableRename[key]
 		t.SkipForeignKeyCheck = l.skipFKCheck[key]
 		t.Ignored = l.ignored[parser.CreateTable][key] || l.ignored[parser.CreateVirtualTable][key]
 		for ckey, c := range t.Columns.All() {
 			c.RenamedFrom = l.columnRename[key][ckey]
+			if b, ok := l.backfill[key][ckey]; ok {
+				if c.Generated != model.NotGenerated {
+					return fmt.Errorf("%s:%d: %s%s cannot fill a generated column: %s",
+						b.file, b.line, parser.DirectivePrefix, parser.Backfill, c.Name)
+				}
+				c.Backfill = b.expr
+			}
 		}
 	}
 	for key, x := range s.Views.All() {
 		x.Ignored = l.ignored[parser.CreateView][key]
 	}
+	return nil
 }
 
 // The phases the statements run in.
