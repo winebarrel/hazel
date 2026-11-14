@@ -1,0 +1,33 @@
+init: |
+  CREATE TABLE t (a, b);
+  CREATE INDEX i1 ON t (a);
+  CREATE INDEX i2 ON t (a);
+  CREATE INDEX i3 ON t (a);
+  CREATE INDEX i4 ON t (a, b);
+  CREATE UNIQUE INDEX i5 ON t (b);
+  CREATE TABLE u_moved (a);
+  CREATE INDEX i6 ON u_moved (a);
+# An index on another table is a change too. The keys come from PRAGMA index_xinfo: column, DESC and collation.
+desired: |
+  CREATE TABLE t (a, b);
+  CREATE TABLE u_moved (a);
+  CREATE INDEX i1 ON t (a DESC);
+  CREATE INDEX i2 ON t (a COLLATE NOCASE);
+  CREATE INDEX i3 ON t (b);
+  CREATE INDEX i4 ON t (a);
+  CREATE INDEX i5 ON t (b);
+  CREATE INDEX i6 ON t (a);
+plan: |
+  -- drop and create: definition changed
+  DROP INDEX i1;
+  DROP INDEX i2;
+  DROP INDEX i3;
+  DROP INDEX i4;
+  DROP INDEX i5;
+  DROP INDEX i6;
+  CREATE INDEX i1 ON t (a DESC);
+  CREATE INDEX i2 ON t (a COLLATE NOCASE);
+  CREATE INDEX i3 ON t (b);
+  CREATE INDEX i4 ON t (a);
+  CREATE INDEX i5 ON t (b);
+  CREATE INDEX i6 ON t (a);

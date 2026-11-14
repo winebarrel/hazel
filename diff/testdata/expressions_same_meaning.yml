@@ -1,0 +1,28 @@
+init: |
+  CREATE TABLE t (
+    a INT CHECK (a != 0),
+    b TEXT DEFAULT 16,
+    c TEXT DEFAULT CURRENT_TIMESTAMP,
+    d INT AS (a + 1),
+    CONSTRAINT b_short CHECK (length(b) < 10)
+  );
+  CREATE INDEX t_lower_b ON t (lower(b));
+  CREATE INDEX t_a ON t (a) WHERE a != 0;
+  CREATE VIEW v AS SELECT a, b FROM t WHERE a != 0;
+  CREATE VIEW w AS SELECT a FROM v ORDER BY a;
+# Expressions, indexes and views are compared by the bytecode SQLite
+# compiles them to, so the ways of writing them that SQLite does not tell
+# apart make no difference.
+desired: |
+  CREATE TABLE t (
+    a INT CHECK ((a <> 0)),
+    b TEXT DEFAULT 0x10,
+    c TEXT DEFAULT current_timestamp,
+    d INT AS (((a+1))),
+    CONSTRAINT b_short CHECK (LENGTH(b)<10)
+  );
+  CREATE INDEX t_lower_b ON t (LOWER( b ));
+  CREATE INDEX t_a ON t (a) WHERE a <> 0;
+  CREATE VIEW v AS select t.a, t.b from t where a<>0;
+  CREATE VIEW w AS SELECT a FROM v ORDER BY 1;
+plan: ""
