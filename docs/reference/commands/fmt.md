@@ -10,7 +10,7 @@ hazel fmt [--check] [--strip-renamed-from] SCHEMA_FILE...
 
 ## Description
 
-`fmt` rewrites the schema files in the layout [`dump`](dump.md) uses, and prints nothing.
+`fmt` rewrites the schema files in the layout [`dump`](dump.md) uses, and prints the name of each file it rewrites. A file already formatted is left as it is and is not named.
 
 ```sql
 -- before
@@ -44,6 +44,8 @@ INSERT INTO   settings VALUES (1);
 - A comment on the line of a statement's `;` stays on that line.
 - The CREATE statements are laid out as `dump` lays them out, and get a `;` when they lack one. When a `--` comment comes right before the `;`, the `;` goes on the next line.
 - Any other statement, and a statement marked with `-- hazel:execute`, is left as it is written. An empty statement (`;;`) is removed.
+
+A file is written to a new file next to it, which then replaces it, so a failure partway through leaves the file as it was; the directory must be writable. The file keeps its mode, and a symlink stays a symlink: the file it points at is rewritten.
 
 Before anything is written, the files are loaded together as they are and as they would be formatted, and the two must give the same schema and the same `-- hazel:execute` statements. They are loaded together because a view may read a table in another file. A file that does not load is an error, and no file is written.
 

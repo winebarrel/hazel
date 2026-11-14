@@ -2,6 +2,10 @@
 
 # Changelog
 
+## [Unreleased]
+
+* `fmt` prints the name of each file it rewrites, as `--check` prints the files it would rewrite. It writes a file by renaming a new one over it, so a failure partway through leaves the file as it was; the directory of the file must be writable.
+
 ## [1.1.0] - 2026-11-15
 
 * The `-- hazel:backfill EXPRESSION` directive on a column fills the rows already in the table with the value of the expression, when the plan adds the column or makes it `NOT NULL`. An added column is filled in every row and a column made `NOT NULL` in the rows where it is NULL, with an `UPDATE` before the `SET NOT NULL`, or by the copy when the table is rebuilt. So a `NOT NULL` column with no `DEFAULT` can be added to a table that has rows, and a column that holds NULLs can be made `NOT NULL`.

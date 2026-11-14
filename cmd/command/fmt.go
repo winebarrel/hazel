@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/winebarrel/hazel/desired"
@@ -39,17 +40,20 @@ func (cmd *Fmt) Run(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("formatting would change the schema, so no file was written: %w", err)
 	}
 
+	// The files that change are named: the ones that are rewritten, or with
+	// --check, the ones that would be.
 	changed := false
 	for i, src := range formatted {
 		if src.Body == srcs[i].Body {
 			continue
 		}
 		changed = true
-		if cmd.Check {
-			fmt.Fprintln(w, src.Name) //nolint:errcheck
-		} else if err := os.WriteFile(src.Name, []byte(src.Body), 0o644); err != nil {
-			return err
+		if !cmd.Check {
+			if err := writeFile(src.Name, src.Body); err != nil {
+				return err
+			}
 		}
+		fmt.Fprintln(w, src.Name) //nolint:errcheck
 	}
 	if cmd.Check && changed {
 		return ErrChanges
@@ -72,4 +76,38 @@ func sameSchema(ctx context.Context, before *desired.Result, formatted []desired
 		err = fmt.Errorf("the plan from the files to the formatted files is not empty:\n%s", plan)
 	}
 	return err
+}
+
+// writeFile writes body to a new file next to the one at path and renames it
+// over that one, so that a failure partway through leaves the file as it was.
+// The new file keeps the mode of the old one. A symlink is resolved first:
+// renaming over the link would replace it with a plain file and leave the
+// file it points at as it was.
+func writeFile(path, body string) error {
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(target), filepath.Base(target)+".hazel-*")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		tmp.Close()           //nolint:errcheck
+		os.Remove(tmp.Name()) //nolint:errcheck
+	}()
+	if _, err := tmp.WriteString(body); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), info.Mode().Perm()); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), target)
 }
