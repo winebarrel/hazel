@@ -50,6 +50,14 @@ ALTER TABLE users ADD COLUMN email TEXT;
 -- Applied 1 statement
 ```
 
+## Try it with Docker
+
+The demo image bundles hazel, sqlite3 and a sample database:
+
+```
+docker run --rm -it ghcr.io/winebarrel/hazel-demo
+```
+
 ## Commands
 
 | Command | Description |
