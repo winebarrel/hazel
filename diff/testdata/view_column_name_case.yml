@@ -1,0 +1,12 @@
+# The column names of a view are compared with case: the name an application
+# reads changes.
+init: |
+  CREATE TABLE t (a);
+  CREATE VIEW v AS SELECT a AS Foo FROM t;
+desired: |
+  CREATE TABLE t (a);
+  CREATE VIEW v AS SELECT a AS foo FROM t;
+plan: |
+  -- drop and create: definition changed
+  DROP VIEW v;
+  CREATE VIEW v AS SELECT a AS foo FROM t;

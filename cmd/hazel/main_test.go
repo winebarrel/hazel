@@ -658,6 +658,7 @@ func TestApplyMemory(t *testing.T) {
 
 func TestApplyErrors(t *testing.T) {
 	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);", "text.db": "this is not a database"})
+	createDB(t, "broken_view.db", "CREATE TABLE b (x); CREATE VIEW v AS SELECT x FROM b; DROP TABLE b;")
 	for _, tt := range []struct {
 		args []string
 		want string
@@ -666,6 +667,8 @@ func TestApplyErrors(t *testing.T) {
 		{[]string{"apply", "app.db", "missing.sql"}, "missing.sql"},
 		{[]string{"apply", "no/such/dir/app.db", "schema.sql"}, "directory does not exist"},
 		{[]string{"apply", "app.db?x", "schema.sql"}, "must not contain '?'"},
+		// A view whose table was dropped cannot be read.
+		{[]string{"apply", "broken_view.db", "schema.sql"}, "view v: "},
 	} {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
 			_, errOut, code := hazel(t, tt.args...)
@@ -1072,4 +1075,95 @@ func TestPager(t *testing.T) {
 	assert.Empty(t, errOut)
 	_, code = hazelToFile(t, "--pager", "plan", ":memory:", "schema.sql")
 	assert.Equal(t, 1, code)
+}
+
+// A rebuild that has dropped the old table is rolled back with the rest: the
+// table keeps its definition, its rows and its index.
+func TestApplyRollsBackRebuild(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT, b TEXT);
+CREATE INDEX t_b ON t (b);
+CREATE UNIQUE INDEX t_a ON t (a);
+`})
+	createDB(t, "app.db", `
+CREATE TABLE t (id INTEGER PRIMARY KEY, a INT, b TEXT);
+CREATE INDEX t_b ON t (b);
+INSERT INTO t VALUES (1, 1, 'x'), (2, 1, 'y');
+`)
+	out, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	// The rebuild ran up to the rename, and the unique index failed after it.
+	assert.Contains(t, out, "ALTER TABLE new_t RENAME TO t;\n-- ok")
+	assert.Contains(t, errOut, "CREATE UNIQUE INDEX t_a ON t (a): constraint failed: UNIQUE constraint failed: t.a")
+	assert.Equal(t, "INT", query(t, "app.db", "SELECT type FROM pragma_table_info('t') WHERE name = 'a'"))
+	assert.Equal(t, "1:1:x,2:1:y", query(t, "app.db", "SELECT group_concat(id || ':' || a || ':' || b, ',') FROM (SELECT * FROM t ORDER BY id)"))
+	assert.Equal(t, "t,t_b", query(t, "app.db", "SELECT group_concat(name, ',') FROM (SELECT name FROM sqlite_schema ORDER BY name)"))
+}
+
+// The statements marked with -- hazel:execute run after the DDL, in the order
+// they are written, across the files.
+func TestApplyExecuteOrder(t *testing.T) {
+	workdir(t, map[string]string{
+		"a.sql": `
+-- hazel:execute
+INSERT INTO log VALUES ('a1');
+CREATE TABLE log (msg TEXT);
+-- hazel:execute
+INSERT INTO log VALUES ('a2');
+`,
+		"b.sql": `
+-- hazel:execute
+INSERT INTO log VALUES ('b1');
+`,
+	})
+	_, _, code := hazel(t, "apply", "app.db", "a.sql", "b.sql")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "a1,a2,b1", query(t, "app.db", "SELECT group_concat(msg, ',') FROM (SELECT msg FROM log ORDER BY rowid)"))
+}
+
+func TestEnvironment(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a TEXT);"})
+	createDB(t, "app.db", "CREATE TABLE t (a INT); CREATE TABLE tmp_x (a); CREATE TABLE old_y (a);")
+
+	// HAZEL_EXCLUDE and HAZEL_INCLUDE take a comma-separated list.
+	t.Setenv("HAZEL_EXCLUDE", "tmp_*,old_*")
+	out, _, code := hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.NotContains(t, out, "DROP TABLE tmp_x")
+	assert.NotContains(t, out, "DROP TABLE old_y")
+	t.Setenv("HAZEL_EXCLUDE", "")
+	t.Setenv("HAZEL_INCLUDE", "t,tmp_*")
+	out, _, code = hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "DROP TABLE tmp_x")
+	assert.NotContains(t, out, "old_y")
+	t.Setenv("HAZEL_INCLUDE", "")
+
+	// A command-line option wins over its environment variable.
+	t.Setenv("HAZEL_ALLOW_TABLE_REBUILD", "false")
+	_, _, code = hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	_, _, code = hazel(t, "plan", "app.db", "schema.sql")
+	assert.Equal(t, 3, code)
+
+	t.Setenv("HAZEL_NO_FORMAT", "true")
+	out, _, code = hazel(t, "dump", "-I", "t", "app.db")
+	assert.Equal(t, 0, code)
+	assert.True(t, strings.HasSuffix(out, "\nCREATE TABLE t (a INT);\n"), out)
+}
+
+// An error of the plan, such as a rename to a name that is already there,
+// fails plan, apply and diff.
+func TestPlanAndDiffError(t *testing.T) {
+	workdir(t, map[string]string{
+		"old.sql": "CREATE TABLE users (id INTEGER PRIMARY KEY); CREATE TABLE members (id INTEGER PRIMARY KEY);",
+		"new.sql": "-- hazel:renamed-from users\nCREATE TABLE members (id INTEGER PRIMARY KEY);",
+	})
+	createDB(t, "app.db", "CREATE TABLE users (id INTEGER PRIMARY KEY); CREATE TABLE members (id INTEGER PRIMARY KEY);")
+	want := "table members: both users and members exist, so it cannot be renamed"
+	for _, args := range [][]string{{"plan", "app.db", "new.sql"}, {"apply", "app.db", "new.sql"}, {"diff", "old.sql", "new.sql"}} {
+		_, errOut, code := hazel(t, args...)
+		assert.Equal(t, 1, code)
+		assert.Contains(t, errOut, want)
+	}
 }
