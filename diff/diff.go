@@ -26,9 +26,10 @@ const (
 // or a view that is dropped before the ALTER, is dropped and created again
 // too, and so on for the views that name those.
 //
-// Definitions are compared with parser.TokensEqual. Changing a column, a
-// PRIMARY KEY, a UNIQUE or a FOREIGN KEY constraint, or STRICT or WITHOUT
-// ROWID is not supported yet and returns an error.
+// Definitions are compared with parser.TokensEqual, and constraints by their
+// content, not their names. Changing a column, a PRIMARY KEY, a UNIQUE, a
+// FOREIGN KEY or a CHECK constraint, STRICT, WITHOUT ROWID or AUTOINCREMENT
+// is not supported yet and returns an error.
 func Diff(current, desired *model.Schema) (*Plan, error) {
 	d := &differ{cur: current, des: desired, dependencies: map[string]string{}, recreatedViews: map[string]bool{}}
 	if err := d.tables(); err != nil {
@@ -96,39 +97,30 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 			added = append(added, key)
 		}
 	}
-	var defs map[string]parser.TableElement
-	if len(added) > 0 {
-		defs = columnDefinitions(des.SQL)
+	// ADD COLUMN copies the column definition, so the CHECK and REFERENCES
+	// constraints written in the definition of a column being added come
+	// with it and are left out of the comparison. Table constraints on the
+	// new columns do not come with it, and are compared like any other.
+	inAdded := func(column string) bool {
+		return column != "" && slices.Contains(added, model.Key(column))
 	}
-	// ADD COLUMN copies the column definition, so a REFERENCES written in the
-	// definition of a column being added comes with it: one foreign key on
-	// that column is left out of the comparison. A table-level FOREIGN KEY
-	// does not come with it, and is compared like any other.
-	exempt := map[string]bool{}
-	desFKs := slices.DeleteFunc(slices.Clone(des.ForeignKeys), func(fk *model.ForeignKey) bool {
-		if len(fk.Columns) != 1 {
-			return false
-		}
-		key := model.Key(fk.Columns[0])
-		if exempt[key] || !slices.Contains(added, key) {
-			return false
-		}
-		exempt[key] = slices.ContainsFunc(defs[key].Tokens, func(t parser.Token) bool {
-			return t.IsKeyword("REFERENCES")
-		})
-		return exempt[key]
-	})
+	desFKs := slices.DeleteFunc(slices.Clone(des.ForeignKeys), func(fk *model.ForeignKey) bool { return inAdded(fk.Column) })
+	desChecks := slices.DeleteFunc(slices.Clone(des.Checks), func(c *model.Check) bool { return inAdded(c.Column) })
 	switch {
 	case cur.Strict != des.Strict:
 		return unsupported("STRICT")
 	case cur.WithoutRowid != des.WithoutRowid:
 		return unsupported("WITHOUT ROWID")
+	case cur.Autoincrement != des.Autoincrement:
+		return unsupported("AUTOINCREMENT")
 	case !indexColumnsEqual(cur.PrimaryKey, des.PrimaryKey):
 		return unsupported("the PRIMARY KEY")
 	case !uniquesEqual(cur.Uniques, des.Uniques):
 		return unsupported("a UNIQUE constraint")
 	case !foreignKeysEqual(cur.ForeignKeys, desFKs):
 		return unsupported("a FOREIGN KEY constraint")
+	case !sameElements(cur.Checks, desChecks, checkEqual):
+		return unsupported("a CHECK constraint")
 	}
 
 	for key, c := range cur.Columns.All() {
@@ -145,8 +137,11 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		}
 	}
 
-	for _, key := range added {
-		d.b.add(alterTables, "", "ALTER TABLE "+q(cur.Name)+" ADD COLUMN "+defs[key].SQL())
+	if len(added) > 0 {
+		defs := columnDefinitions(des.SQL)
+		for _, key := range added {
+			d.b.add(alterTables, "", "ALTER TABLE "+q(cur.Name)+" ADD COLUMN "+defs[key].SQL())
+		}
 	}
 	return nil
 }
@@ -293,7 +288,24 @@ func columnEqual(a, b *model.Column) bool {
 	return sqlEqual(a.Type, b.Type) &&
 		a.NotNull == b.NotNull &&
 		ptrEqual(a.Default, b.Default) &&
-		a.Generated == b.Generated
+		parser.EqualFold(collation(a), collation(b)) &&
+		a.Generated == b.Generated &&
+		sqlEqual(a.GeneratedExpr, b.GeneratedExpr)
+}
+
+// collation returns the collation of a column. A column without COLLATE uses
+// BINARY, so writing COLLATE BINARY changes nothing.
+func collation(c *model.Column) string {
+	if c.Collation == "" {
+		return "BINARY"
+	}
+	return c.Collation
+}
+
+// checkEqual compares two CHECK constraints by their expressions. Names are
+// not compared, and a CHECK of a column equals the same CHECK of the table.
+func checkEqual(a, b *model.Check) bool {
+	return sqlEqual(a.Expr, b.Expr)
 }
 
 func ptrEqual(a, b *string) bool {
@@ -342,7 +354,8 @@ func foreignKeyEqual(a, b *model.ForeignKey) bool {
 		parser.EqualFold(a.RefTable, b.RefTable) &&
 		namesEqual(a.RefColumns, b.RefColumns) &&
 		a.OnUpdate == b.OnUpdate &&
-		a.OnDelete == b.OnDelete
+		a.OnDelete == b.OnDelete &&
+		a.Deferred == b.Deferred
 }
 
 func namesEqual(a, b []string) bool {

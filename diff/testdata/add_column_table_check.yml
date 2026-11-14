@@ -1,0 +1,5 @@
+init: |
+  CREATE TABLE t (a);
+desired: |
+  CREATE TABLE t (a, b, CHECK (b > 0));
+error: "table t: changing a CHECK constraint is not supported yet"

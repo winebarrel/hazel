@@ -77,8 +77,8 @@ func TestReadColumns(t *testing.T) {
 		{Name: "a", Type: "INT", NotNull: true},
 		{Name: "b", Type: "VarChar( 10 )", Default: new("'x'")},
 		{Name: "c"},
-		{Name: "d", Type: "INT", Generated: model.GeneratedVirtual},
-		{Name: "e", Type: "INT", Generated: model.GeneratedStored},
+		{Name: "d", Type: "INT", Generated: model.GeneratedVirtual, GeneratedExpr: "id * 2"},
+		{Name: "e", Type: "INT", Generated: model.GeneratedStored, GeneratedExpr: "id"},
 	}, tbl.Columns.CollectValues())
 	assert.Equal(t, []*model.IndexColumn{{Name: "id", Collation: "BINARY"}}, tbl.PrimaryKey)
 	assert.Empty(t, tbl.ForeignKeys)
@@ -132,7 +132,7 @@ func TestReadForeignKeys(t *testing.T) {
 	assert.Equal(t, []*model.ForeignKey{
 		{
 			Columns: []string{"user_id"}, RefTable: "users", RefColumns: []string{""},
-			OnUpdate: "NO ACTION", OnDelete: "CASCADE",
+			OnUpdate: "NO ACTION", OnDelete: "CASCADE", Column: "user_id",
 		},
 		{
 			Columns: []string{"editor_id"}, RefTable: "Users", RefColumns: []string{"id"},
@@ -143,6 +143,32 @@ func TestReadForeignKeys(t *testing.T) {
 			OnUpdate: "NO ACTION", OnDelete: "NO ACTION",
 		},
 	}, schema.Tables.Get("posts").ForeignKeys)
+}
+
+func TestReadTableDef(t *testing.T) {
+	schema := readSchema(t,
+		`CREATE TABLE users (id INTEGER PRIMARY KEY)`,
+		`CREATE TABLE posts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT COLLATE NOCASE CHECK (length(title) > 0),
+			user_id INT CONSTRAINT fk_user REFERENCES users (id) DEFERRABLE INITIALLY DEFERRED,
+			CONSTRAINT positive CHECK (id > 0)
+		)`,
+	)
+	posts := schema.Tables.Get("posts")
+	assert.True(t, posts.Autoincrement)
+	assert.False(t, schema.Tables.Get("users").Autoincrement)
+	assert.Equal(t, "NOCASE", posts.Columns.Get("title").Collation)
+	assert.Empty(t, posts.Columns.Get("id").Collation)
+	assert.Equal(t, []*model.Check{
+		{Expr: "length(title) > 0", Column: "title"},
+		{Name: "positive", Expr: "id > 0"},
+	}, posts.Checks)
+	assert.Equal(t, []*model.ForeignKey{{
+		Columns: []string{"user_id"}, RefTable: "users", RefColumns: []string{"id"},
+		OnUpdate: "NO ACTION", OnDelete: "NO ACTION",
+		Deferred: true, Name: "fk_user", Column: "user_id",
+	}}, posts.ForeignKeys)
 }
 
 func TestReadUniques(t *testing.T) {

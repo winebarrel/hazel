@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/winebarrel/hazel/model"
+	"github.com/winebarrel/hazel/parser"
 	"github.com/winebarrel/orderedmap/v2"
 )
 
@@ -23,7 +24,7 @@ import (
 //
 // What PRAGMAs do not report (column collations, CHECK constraints,
 // generated column expressions, constraint names, AUTOINCREMENT and
-// DEFERRABLE) is left for the parser to read from the SQL. The MATCH clause
+// DEFERRABLE) is read from the SQL with parser.ParseCreateTable. The MATCH clause
 // of a foreign key is not read: SQLite parses it and keeps nothing of it, so
 // PRAGMA foreign_key_list always reports NONE.
 func Read(ctx context.Context, db *sql.DB) (*model.Schema, error) {
@@ -194,7 +195,38 @@ func (r *reader) table(o objectRow) *model.Table {
 			t.PrimaryKey = append(t.PrimaryKey, &model.IndexColumn{Name: name, Collation: "BINARY"})
 		}
 	}
+	r.addTableDef(t)
 	return t
+}
+
+// addTableDef adds what the CREATE TABLE says that PRAGMAs do not report. The
+// foreign keys of both are in the order written, so they are matched by
+// position. If the parser finds another number of them than PRAGMA
+// foreign_key_list reports, the read fails rather than putting names on the
+// wrong ones.
+func (r *reader) addTableDef(t *model.Table) {
+	tokens, _ := parser.Tokenize(t.SQL)
+	def := parser.ParseCreateTable(parser.Statement{Tokens: tokens})
+	t.Autoincrement = def.Autoincrement
+	for _, c := range def.Columns {
+		if col, ok := t.Columns.GetOk(model.Key(c.Name)); ok {
+			col.Collation = c.Collation
+			col.GeneratedExpr = c.Generated
+		}
+	}
+	for _, c := range def.Checks {
+		t.Checks = append(t.Checks, &model.Check{Name: c.Name, Expr: c.Expr, Column: c.Column})
+	}
+	if len(def.ForeignKeys) != len(t.ForeignKeys) {
+		r.fail(fmt.Errorf("found %d foreign keys in the SQL, but PRAGMA foreign_key_list reports %d",
+			len(def.ForeignKeys), len(t.ForeignKeys)))
+		return
+	}
+	for i, fk := range def.ForeignKeys {
+		t.ForeignKeys[i].Name = fk.Name
+		t.ForeignKeys[i].Deferred = fk.Deferred
+		t.ForeignKeys[i].Column = fk.Column
+	}
 }
 
 type fkRow struct {

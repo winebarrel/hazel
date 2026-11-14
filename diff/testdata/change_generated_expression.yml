@@ -1,0 +1,5 @@
+init: |
+  CREATE TABLE t (a, b AS (a + 1));
+desired: |
+  CREATE TABLE t (a, b AS (a + 2));
+error: "table t: changing column b is not supported yet"
