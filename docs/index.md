@@ -10,6 +10,10 @@ ALTER TABLE users ADD COLUMN email TEXT;
 CREATE INDEX users_email ON users (email);
 ```
 
+<video src="https://github.com/user-attachments/assets/bf842f17-34a3-4966-b49f-be3269bf7773"
+       width="800" style="max-width: 100%"
+       controls autoplay muted loop playsinline></video>
+
 ## How it works
 
 1. The schema files are run in an in-memory database, and the resulting schema is read back from `sqlite_schema` and the schema PRAGMAs. The same reader reads the target database.
