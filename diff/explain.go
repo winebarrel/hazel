@@ -71,6 +71,12 @@ func (e *explainer) bytecode(q string) (string, error) {
 
 // sameExpr reports whether two expressions compile to the same bytecode,
 // as columns of table, or with no table when table is "".
+//
+// When either does not compile, they are compared by their tokens instead.
+// A DEFAULT written as a bare word is a string to SQLite but does not
+// compile in a SELECT, and the same text must still compare equal. A current
+// expression that uses a column the desired table lacks fails on one side
+// only, and its tokens differ too.
 func (e *explainer) sameExpr(a, b, table string) bool {
 	from := ""
 	if table != "" {
@@ -78,12 +84,17 @@ func (e *explainer) sameExpr(a, b, table string) bool {
 	}
 	x, errA := e.bytecode("SELECT (" + a + ")" + from)
 	y, errB := e.bytecode("SELECT (" + b + ")" + from)
-	return errA == nil && errB == nil && x == y
+	if errA != nil || errB != nil {
+		return sqlEqual(a, b)
+	}
+	return x == y
 }
 
 // sameView reports whether the current view reads the same as the desired
 // one: the bytecode of SELECT * from each, and the names of their columns,
-// since a column alias does not show in the bytecode. The current view is
+// since a column alias does not show in the bytecode. The names are compared
+// with their case, unlike other names: the case is what an application
+// reading the view sees. The current view is
 // created next to the desired one under another name to be compiled.
 func (e *explainer) sameView(cur, des *model.View) bool {
 	e.n++
