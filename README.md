@@ -77,10 +77,3 @@ make build  # builds ./hazel
 make test
 make lint
 ```
-
-The documentation site is built with [MkDocs](https://www.mkdocs.org/) from `docs/`:
-
-```
-pip install -r requirements-docs.txt
-mkdocs serve
-```
