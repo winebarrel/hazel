@@ -1,0 +1,13 @@
+init: |
+  CREATE TABLE t (a, b CONSTRAINT b_positive CHECK (b > 0));
+# DROP COLUMN fails while a CHECK uses the column, so the CHECK is dropped
+# first.
+desired: |
+  CREATE TABLE t (a);
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   column t.b
+  --
+  -- drop: removed from schema
+  ALTER TABLE t DROP CONSTRAINT b_positive;
+  ALTER TABLE t DROP COLUMN b;

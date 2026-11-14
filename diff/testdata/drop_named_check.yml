@@ -1,0 +1,8 @@
+init: |
+  CREATE TABLE t (a CONSTRAINT a_positive CHECK (a > 0), b, CONSTRAINT b_small CHECK (b < 10));
+desired: |
+  CREATE TABLE t (a, b);
+plan: |
+  -- drop: removed from schema
+  ALTER TABLE t DROP CONSTRAINT a_positive;
+  ALTER TABLE t DROP CONSTRAINT b_small;

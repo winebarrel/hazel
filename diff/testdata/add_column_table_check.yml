@@ -1,5 +1,8 @@
 init: |
   CREATE TABLE t (a);
+# A table CHECK on a new column is added after the column.
 desired: |
   CREATE TABLE t (a, b, CHECK (b > 0));
-error: "table t: changing a CHECK constraint is not supported yet"
+plan: |
+  ALTER TABLE t ADD COLUMN b;
+  ALTER TABLE t ADD CHECK (b > 0);

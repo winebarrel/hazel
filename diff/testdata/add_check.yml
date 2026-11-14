@@ -1,5 +1,13 @@
 init: |
-  CREATE TABLE t (a);
+  CREATE TABLE t (a, b);
+# A CHECK written on an existing column is added as a table constraint,
+# which SQLite treats the same.
 desired: |
-  CREATE TABLE t (a, CHECK (a > 0));
-error: "table t: changing a CHECK constraint is not supported yet"
+  CREATE TABLE t (
+    a CHECK (a > 0),
+    b,
+    CONSTRAINT b_small CHECK (b < 10)
+  );
+plan: |
+  ALTER TABLE t ADD CHECK (a > 0);
+  ALTER TABLE t ADD CONSTRAINT b_small CHECK (b < 10);

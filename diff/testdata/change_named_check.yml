@@ -1,0 +1,10 @@
+init: |
+  CREATE TABLE t (a, CONSTRAINT a_range CHECK (a > 0));
+# CHECK constraints are matched by content, so a changed one is the old one
+# dropped and a new one added.
+desired: |
+  CREATE TABLE t (a, CONSTRAINT a_range CHECK (a >= 0));
+plan: |
+  -- drop: removed from schema
+  ALTER TABLE t DROP CONSTRAINT a_range;
+  ALTER TABLE t ADD CONSTRAINT a_range CHECK (a >= 0);

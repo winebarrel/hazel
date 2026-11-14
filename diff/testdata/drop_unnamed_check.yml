@@ -1,0 +1,6 @@
+init: |
+  CREATE TABLE t (a CHECK (a > 0));
+# DROP CONSTRAINT needs a name, so this needs a table rebuild.
+desired: |
+  CREATE TABLE t (a);
+error: "table t: changing a CHECK constraint is not supported yet"
