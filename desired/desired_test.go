@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/winebarrel/hazel/desired"
+	"modernc.org/sqlite"
 )
 
 func load(t *testing.T, srcs ...desired.Source) ([]string, []desired.Warning, error) {
@@ -43,11 +44,13 @@ CREATE INDEX users_deleted ON users (deleted_at);
 CREATE TABLE users (id INTEGER PRIMARY KEY, deleted_at TEXT);
 CREATE TABLE log (x);
 CREATE VIRTUAL TABLE docs USING fts5(body);
+CREATE VIRTUAL TABLE boxes USING rtree(id, minx, maxx);
+CREATE VIRTUAL TABLE shapes USING geopoly(name);
 `})
 	require.NoError(t, err)
 	assert.Empty(t, warnings)
 	assert.Equal(t, []string{
-		"table users", "table log", "table docs",
+		"table users", "table log", "table docs", "table boxes", "table shapes",
 		"index users_deleted",
 		"view recent", "view active",
 		"trigger tr",
@@ -95,6 +98,40 @@ CREATE TEMP TABLE scratch (a);
 	assert.Equal(t, "schema.sql:2: ignored unsupported statement: INSERT INTO users VALUES (1);", warnings[0].String())
 }
 
+func TestWarningString(t *testing.T) {
+	// Only the first line of the statement is reported.
+	w := desired.Warning{File: "s.sql", Line: 3, SQL: "INSERT INTO t VALUES\n  (1),\n  (2);"}
+	assert.Equal(t, "s.sql:3: ignored unsupported statement: INSERT INTO t VALUES ...", w.String())
+
+	w = desired.Warning{File: "s.sql", Line: 3, SQL: "PRAGMA user_version = 1; -- note\n"}
+	assert.Equal(t, "s.sql:3: ignored unsupported statement: PRAGMA user_version = 1; -- note", w.String())
+}
+
+func TestAuthorize(t *testing.T) {
+	tests := []struct {
+		name                 string
+		action               sqlite.AuthorizerActionCode
+		arg1, arg2, database string
+		want                 sqlite.AuthorizerReturnCode
+	}{
+		{"create table", sqlite.AuthCreateTable, "t", "", "main", sqlite.AuthorizerOK},
+		{"function", sqlite.AuthFunction, "", "lower", "", sqlite.AuthorizerOK},
+		{"delete from a shadow table", sqlite.AuthDelete, "r_node", "", "main", sqlite.AuthorizerOK},
+		{"read page_size", sqlite.AuthPragma, "page_size", "", "main", sqlite.AuthorizerOK},
+		{"set page_size", sqlite.AuthPragma, "page_size", "4096", "main", sqlite.AuthorizerDeny},
+		{"other pragma", sqlite.AuthPragma, "journal_mode", "", "main", sqlite.AuthorizerDeny},
+		{"attach", sqlite.AuthAttach, "x.db", "", "", sqlite.AuthorizerDeny},
+		{"transaction", sqlite.AuthTransaction, "BEGIN", "", "", sqlite.AuthorizerDeny},
+		{"drop table", sqlite.AuthDropTable, "t", "", "main", sqlite.AuthorizerDeny},
+		{"temp schema", sqlite.AuthCreateTable, "t", "", "temp", sqlite.AuthorizerDeny},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, desired.Authorize(tt.action, tt.arg1, tt.arg2, tt.database, ""))
+		})
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -108,7 +145,7 @@ func TestLoadErrors(t *testing.T) {
 		// comes when its columns are read.
 		{"view on missing table", "CREATE VIEW v AS SELECT * FROM nope;", "view v: SQL logic error: no such table: main.nope"},
 		{"views reading each other", "CREATE VIEW a AS SELECT * FROM b;\nCREATE VIEW b AS SELECT * FROM a;", "view a: SQL logic error: view a is circularly defined"},
-		{"tokenize", "CREATE TABLE 'a", "schema.sql: line 1: unterminated string"},
+		{"tokenize", "CREATE TABLE a (x);\nCREATE TABLE 'a", "schema.sql:2: unterminated string"},
 		// The statement passes the classification, and the authorizer
 		// refuses what it would do.
 		{"temp schema", "CREATE TABLE temp.x (a);", "schema.sql:1: authorization denied"},

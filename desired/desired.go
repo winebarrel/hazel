@@ -4,8 +4,10 @@ package desired
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/winebarrel/hazel/catalog"
 	"github.com/winebarrel/hazel/db"
@@ -40,8 +42,14 @@ type Warning struct {
 	SQL  string
 }
 
+// String reports the first line of the statement only, so that a long INSERT
+// left in a schema file does not fill the output.
 func (w Warning) String() string {
-	return fmt.Sprintf("%s:%d: ignored unsupported statement: %s", w.File, w.Line, w.SQL)
+	sql, rest, cut := strings.Cut(w.SQL, "\n")
+	if cut && strings.TrimSpace(rest) != "" {
+		sql += " ..."
+	}
+	return fmt.Sprintf("%s:%d: ignored unsupported statement: %s", w.File, w.Line, sql)
 }
 
 // statement is a statement with where it was written.
@@ -69,7 +77,10 @@ func Load(ctx context.Context, srcs []Source) (*model.Schema, []Warning, error) 
 	for _, src := range srcs {
 		tokens, err := parser.Tokenize(src.Body)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", src.Name, err)
+			// Tokenize returns a *parser.Error, which carries the line.
+			var perr *parser.Error
+			errors.As(err, &perr)
+			return nil, nil, fmt.Errorf("%s:%d: %w", src.Name, perr.Line, perr.Err)
 		}
 		for _, stmt := range parser.Split(tokens) {
 			if stmt.IsEmpty() {
@@ -148,7 +159,9 @@ func setAuthorizer(conn *sql.Conn, fn sqlite.AuthorizerFn) error {
 
 // allowed lists the actions that the CREATE statements hazel manages need.
 // SQLite writes sqlite_schema with INSERT and UPDATE, a virtual table module
-// writes its shadow tables, and CREATE INDEX presents REINDEX.
+// writes its shadow tables (rtree and geopoly also DELETE from them), and
+// CREATE INDEX presents REINDEX. No CREATE statement deletes from a user
+// table, since trigger bodies do not run, and the database is a scratch one.
 var allowed = map[sqlite.AuthorizerActionCode]bool{
 	sqlite.AuthCreateTable:   true,
 	sqlite.AuthCreateIndex:   true,
@@ -157,6 +170,7 @@ var allowed = map[sqlite.AuthorizerActionCode]bool{
 	sqlite.AuthCreateVTable:  true,
 	sqlite.AuthInsert:        true,
 	sqlite.AuthUpdate:        true,
+	sqlite.AuthDelete:        true,
 	sqlite.AuthRead:          true,
 	sqlite.AuthSelect:        true,
 	sqlite.AuthFunction:      true,
@@ -166,9 +180,14 @@ var allowed = map[sqlite.AuthorizerActionCode]bool{
 
 // authorize allows the actions in allowed on the main schema. CREATE TABLE
 // temp.x presents CREATE TABLE on "temp", not CREATE TEMP TABLE, so the
-// database is checked too. Functions and SELECT have no database.
-func authorize(action sqlite.AuthorizerActionCode, _, _, database, _ string) sqlite.AuthorizerReturnCode {
-	if allowed[action] && (database == "main" || database == "") {
+// database is checked too. Functions and SELECT have no database. The one
+// PRAGMA allowed is reading page_size, which rtree and geopoly do to size
+// their nodes.
+func authorize(action sqlite.AuthorizerActionCode, arg1, arg2, database, _ string) sqlite.AuthorizerReturnCode {
+	if database != "main" && database != "" {
+		return sqlite.AuthorizerDeny
+	}
+	if allowed[action] || (action == sqlite.AuthPragma && arg1 == "page_size" && arg2 == "") {
 		return sqlite.AuthorizerOK
 	}
 	return sqlite.AuthorizerDeny

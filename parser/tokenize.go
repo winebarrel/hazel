@@ -6,16 +6,30 @@ import (
 	"strings"
 )
 
+// Error is an error at a line of the source.
+type Error struct {
+	Line int
+	Err  error
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("line %d: %v", e.Line, e.Err)
+}
+
+func (e *Error) Unwrap() error {
+	return e.Err
+}
+
 // Tokenize splits src into tokens, whitespace and comments included, so that
 // joining the Text of every token gives back src. It follows the rules of
-// SQLite's tokenizer (src/tokenize.c).
+// SQLite's tokenizer (src/tokenize.c). An error is an *Error.
 func Tokenize(src string) ([]Token, error) {
 	var tokens []Token
 	line := 1
 	for i := 0; i < len(src); {
 		kind, n, err := scan(src[i:])
 		if err != nil {
-			return nil, fmt.Errorf("line %d: %w", line, err)
+			return nil, &Error{Line: line, Err: err}
 		}
 		text := src[i : i+n]
 		tokens = append(tokens, Token{Kind: kind, Text: text, Offset: i, Line: line})

@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -145,8 +146,10 @@ func TestTokenizeError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {
 			_, err := parser.Tokenize(tt.src)
-			require.Error(t, err)
+			var perr *parser.Error
+			require.ErrorAs(t, err, &perr)
 			assert.Contains(t, err.Error(), tt.want)
+			assert.Error(t, errors.Unwrap(err))
 		})
 	}
 }
