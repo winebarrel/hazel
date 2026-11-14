@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/winebarrel/hazel/db"
 	"github.com/winebarrel/hazel/desired"
 	"github.com/winebarrel/hazel/diff"
 	"github.com/winebarrel/hazel/model"
@@ -34,6 +35,20 @@ func (e *RebuildRequiredError) Error() string {
 // Rebuild holds --allow-table-rebuild.
 type Rebuild struct {
 	AllowTableRebuild bool `env:"HAZEL_ALLOW_TABLE_REBUILD" help:"Allow rebuilding a table for a change ALTER TABLE cannot make. Without it, such a plan fails with exit status 3."`
+}
+
+// NoCreate holds --no-create.
+type NoCreate struct {
+	NoCreate bool `env:"HAZEL_NO_CREATE" help:"Fail when the database file does not exist, instead of creating it (apply) or taking it as an empty database (plan)."`
+}
+
+// refuseMissing fails when --no-create is given and the database file does
+// not exist.
+func (o NoCreate) refuseMissing(t db.Target, exists bool) error {
+	if o.NoCreate && !exists && !t.IsMemory() {
+		return fmt.Errorf("database does not exist: %s", t)
+	}
+	return nil
 }
 
 // Check holds --check, which the config file cannot set: it is an operation

@@ -21,7 +21,8 @@ type Plan struct {
 	Filter
 	Rebuild
 	Check
-	DB    string   `arg:"" help:"The database file, as the sqlite3 shell takes it. A file that does not exist is taken as an empty database."`
+	NoCreate
+	DB    string   `arg:"" help:"The database file, as the sqlite3 shell takes it. A file that does not exist is taken as an empty database, unless --no-create is given."`
 	Files []string `arg:"" name:"schema-file" help:"The schema files."`
 }
 
@@ -34,6 +35,9 @@ func (cmd *Plan) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	}
 	exists, err := target.Exists()
 	if err != nil {
+		return err
+	}
+	if err := cmd.refuseMissing(target, exists); err != nil {
 		return err
 	}
 	want, err := loadFiles(ctx, cmd.Files, stderr)

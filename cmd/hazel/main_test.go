@@ -92,6 +92,42 @@ CREATE INDEX users_name ON users (name);
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
+func TestNoCreate(t *testing.T) {
+	dir := workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);"})
+	for _, cmd := range []string{"plan", "apply"} {
+		t.Run(cmd, func(t *testing.T) {
+			_, errOut, code := hazel(t, cmd, "--no-create", "app.db", "schema.sql")
+			assert.Equal(t, 1, code)
+			assert.Equal(t, "hazel: error: database does not exist: "+filepath.Join(dir, "app.db")+"\n", errOut)
+			_, err := os.Stat("app.db")
+			assert.ErrorIs(t, err, os.ErrNotExist)
+
+			t.Setenv("HAZEL_NO_CREATE", "true")
+			_, _, code = hazel(t, cmd, "app.db", "schema.sql")
+			assert.Equal(t, 1, code)
+		})
+	}
+
+	// An in-memory database is not refused.
+	_, _, code := hazel(t, "plan", "--no-create", ":memory:", "schema.sql")
+	assert.Equal(t, 0, code)
+
+	// An existing database is planned and applied as without the option.
+	createDB(t, "app.db", "CREATE TABLE u (b);")
+	out, _, code := hazel(t, "plan", "--no-create", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "CREATE TABLE t (\n    a\n);\n")
+	out, _, code = hazel(t, "apply", "--no-create", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "-- Applied 2 statements\n")
+
+	// The configuration file can set it.
+	require.NoError(t, os.WriteFile("hazel.yml", []byte("no-create: true\n"), 0o644))
+	_, errOut, code := hazel(t, "-C", "hazel.yml", "apply", "other.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "database does not exist")
+}
+
 func TestPlanNoChanges(t *testing.T) {
 	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);"})
 	createDB(t, "app.db", "CREATE TABLE t (a)")

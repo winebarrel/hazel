@@ -6,12 +6,12 @@ apply -- run the DDL that takes a database to the schema files
 
 ```
 hazel apply [-I PAT]... [-E PAT]... [--allow-table-rebuild] [--busy-timeout=DURATION]
-            [--skip-foreign-key-check] DB SCHEMA_FILE...
+            [--skip-foreign-key-check] [--no-create] DB SCHEMA_FILE...
 ```
 
 ## Description
 
-`apply` computes the plan as [`plan`](plan.md) does and runs it in one transaction. A database file that does not exist is created.
+`apply` computes the plan as [`plan`](plan.md) does and runs it in one transaction. A database file that does not exist is created, unless `--no-create` is given.
 
 The steps are:
 
@@ -55,6 +55,9 @@ hazel: error: ALTER TABLE users ALTER COLUMN name SET NOT NULL: existing rows in
 
 `--skip-foreign-key-check`
 :   Do not run `PRAGMA foreign_key_check` before the commit. For a database that holds rows breaking a foreign key from before.
+
+`--no-create`
+:   Fail when the database file does not exist, instead of creating it. An in-memory database is not affected.
 
 ## Exit status
 

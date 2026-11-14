@@ -22,9 +22,10 @@ import (
 type Apply struct {
 	Filter
 	Rebuild
+	NoCreate
 	BusyTimeout         time.Duration `default:"5s" env:"HAZEL_BUSY_TIMEOUT" placeholder:"DURATION" help:"How long to wait for the write lock, as a Go duration such as 5s."`
 	SkipForeignKeyCheck bool          `env:"HAZEL_SKIP_FOREIGN_KEY_CHECK" help:"Do not run PRAGMA foreign_key_check before the commit. For a database that holds rows breaking a foreign key from before."`
-	DB                  string        `arg:"" help:"The database file, as the sqlite3 shell takes it. A file that does not exist is created."`
+	DB                  string        `arg:"" help:"The database file, as the sqlite3 shell takes it. A file that does not exist is created, unless --no-create is given."`
 	Files               []string      `arg:"" name:"schema-file" help:"The schema files."`
 }
 
@@ -58,6 +59,9 @@ func (cmd *Apply) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	}
 	exists, err := target.Exists()
 	if err != nil {
+		return err
+	}
+	if err := cmd.refuseMissing(target, exists); err != nil {
 		return err
 	}
 	want, err := loadFiles(ctx, cmd.Files, stderr)

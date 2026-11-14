@@ -31,6 +31,7 @@ These options are for a single run and cannot be set in the file: `--check`, `--
 | `HAZEL_ALLOW_TABLE_REBUILD` | `--allow-table-rebuild` |
 | `HAZEL_BUSY_TIMEOUT` | `--busy-timeout` |
 | `HAZEL_SKIP_FOREIGN_KEY_CHECK` | `--skip-foreign-key-check` |
+| `HAZEL_NO_CREATE` | `--no-create` |
 | `HAZEL_NO_FORMAT` | `--no-format` |
 | `HAZEL_PAGER` | The pager command; see below. |
 
