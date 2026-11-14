@@ -68,6 +68,7 @@ make test-changelog # test scripts/merge-changelog.sh, the CHANGELOG.md merge dr
 4. After implementation:
    - Verify test cases are comprehensive (check for missing scenarios and edge cases).
    - Verify coverage has not decreased and cover any reachable paths that can be tested naturally (do not write unnatural tests for unreachable defensive code).
+   - Do not change the code only to raise coverage. A defensive branch that no natural test reaches stays uncovered, even when codecov/patch falls below its target.
    - Consider whether similar issues exist elsewhere in the codebase.
    - Run `make lint` to check for lint errors.
    - Add a `CHANGELOG.md` entry under `## [Unreleased]` when the change is one a user of hazel would notice, creating that section above the newest release if it is not there. The release fills in the version and date, and the link definitions at the bottom of the file; leave them alone. What they cannot see gets no entry: a test or fixture, documentation, a dependency bump, or a refactor that leaves behavior alone.
