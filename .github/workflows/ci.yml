@@ -74,3 +74,21 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.txt
           flags: ${{ matrix.os }}
+
+  # The real-world schema tests (REALWORLD-TESTS.md). The schema files are
+  # pinned to commits and kept in the cache, keyed on realworld.mk, where the
+  # pins are.
+  realworld:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}/realworld-cache
+          key: realworld-${{ hashFiles('realworld.mk') }}
+      - run: make test-realworld
+        env:
+          REALWORLD_CACHE: ${{ runner.temp }}/realworld-cache
