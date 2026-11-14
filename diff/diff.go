@@ -18,16 +18,19 @@ const (
 // Objects are matched by name. A table missing from desired is dropped and a
 // new one is created; a column is added or dropped with ALTER TABLE. An
 // index, a view or a trigger whose definition changed is dropped and
-// created again, and so are the views and triggers that use a table that
-// drops a column, since DROP COLUMN fails while they use it. A virtual table
-// whose definition changed is dropped and created again, which loses its
-// data.
+// created again. A virtual table whose definition changed is dropped and
+// created again, which loses its data.
+//
+// DROP COLUMN checks every view and trigger in the schema, so when the plan
+// drops a column, a view or a trigger that names a table dropping a column,
+// or a view that is dropped before the ALTER, is dropped and created again
+// too, and so on for the views that name those.
 //
 // Definitions are compared with parser.TokensEqual. Changing a column, a
 // PRIMARY KEY, a UNIQUE or a FOREIGN KEY constraint, or STRICT or WITHOUT
 // ROWID is not supported yet and returns an error.
 func Diff(current, desired *model.Schema) (*Plan, error) {
-	d := &differ{cur: current, des: desired, dropsColumns: map[string]bool{}, recreatedViews: map[string]bool{}}
+	d := &differ{cur: current, des: desired, dependencies: map[string]string{}, recreatedViews: map[string]bool{}}
 	if err := d.tables(); err != nil {
 		return nil, err
 	}
@@ -40,8 +43,13 @@ func Diff(current, desired *model.Schema) (*Plan, error) {
 type differ struct {
 	cur, des *model.Schema
 	b        builder
-	// dropsColumns holds the keys of the tables that drop a column.
-	dropsColumns map[string]bool
+	// dropsColumns reports whether the plan drops a column.
+	dropsColumns bool
+	// dependencies maps the key of each table that drops a column, and of
+	// each view that is dropped and created again, to the reason a view or a
+	// trigger naming it gives: "users, which drops a column". It is used only
+	// when the plan drops a column.
+	dependencies map[string]string
 	// recreatedViews holds the keys of the views that are dropped and created
 	// again. DROP VIEW drops the triggers on the view as well.
 	recreatedViews map[string]bool
@@ -82,6 +90,16 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 	unsupported := func(what string) error {
 		return fmt.Errorf("table %s: changing %s is not supported yet", des.Name, what)
 	}
+	var added []string
+	for key := range des.Columns.Keys() {
+		if !cur.Columns.Has(key) {
+			added = append(added, key)
+		}
+	}
+	// A foreign key on columns being added comes with their definitions.
+	desFKs := slices.DeleteFunc(slices.Clone(des.ForeignKeys), func(fk *model.ForeignKey) bool {
+		return !slices.ContainsFunc(fk.Columns, func(c string) bool { return !slices.Contains(added, model.Key(c)) })
+	})
 	switch {
 	case cur.Strict != des.Strict:
 		return unsupported("STRICT")
@@ -91,7 +109,7 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		return unsupported("the PRIMARY KEY")
 	case !uniquesEqual(cur.Uniques, des.Uniques):
 		return unsupported("a UNIQUE constraint")
-	case !foreignKeysEqual(cur.ForeignKeys, des.ForeignKeys):
+	case !foreignKeysEqual(cur.ForeignKeys, desFKs):
 		return unsupported("a FOREIGN KEY constraint")
 	}
 
@@ -100,7 +118,8 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		if !ok {
 			d.b.add(alterTables, removed, "ALTER TABLE "+q(cur.Name)+" DROP COLUMN "+q(c.Name))
 			d.b.dataLoss = append(d.b.dataLoss, "column "+cur.Name+"."+c.Name)
-			d.dropsColumns[model.Key(cur.Name)] = true
+			d.dropsColumns = true
+			d.dependencies[model.Key(cur.Name)] = cur.Name + ", which drops a column"
 			continue
 		}
 		if !columnEqual(c, dc) {
@@ -108,15 +127,11 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		}
 	}
 
-	var defs map[string]string
-	for key := range des.Columns.Keys() {
-		if cur.Columns.Has(key) {
-			continue
+	if len(added) > 0 {
+		defs := columnDefinitions(des.SQL)
+		for _, key := range added {
+			d.b.add(alterTables, "", "ALTER TABLE "+q(cur.Name)+" ADD COLUMN "+defs[key])
 		}
-		if defs == nil {
-			defs = columnDefinitions(des.SQL)
-		}
-		d.b.add(alterTables, "", "ALTER TABLE "+q(cur.Name)+" ADD COLUMN "+defs[key])
 	}
 	return nil
 }
@@ -156,21 +171,31 @@ func (d *differ) indexes() {
 }
 
 func (d *differ) views() {
+	var kept []string
 	for key, cur := range d.cur.Views.All() {
 		des, ok := d.des.Views.GetOk(key)
 		switch {
 		case !ok:
 			d.b.add(dropViewsAndTriggers, removed, "DROP VIEW "+q(cur.Name))
 		case !sqlEqual(cur.SQL, des.SQL):
-			d.b.add(dropViewsAndTriggers, definitionChanged, "DROP VIEW "+q(cur.Name))
-			d.b.add(createViews, "", des.SQL)
-			d.recreatedViews[key] = true
+			d.recreateView(key, definitionChanged)
 		default:
-			if t := d.dependency(cur.SQL); t != "" {
-				d.b.add(dropViewsAndTriggers, dependsOn(t), "DROP VIEW "+q(cur.Name))
-				d.b.add(createViews, "", des.SQL)
-				d.recreatedViews[key] = true
+			kept = append(kept, key)
+		}
+	}
+	// A kept view that names a table dropping a column, or a view created
+	// again, is created again too, until no more views are added.
+	for d.dropsColumns {
+		before := len(kept)
+		kept = slices.DeleteFunc(kept, func(key string) bool {
+			reason := d.dependency(d.cur.Views.Get(key).SQL)
+			if reason != "" {
+				d.recreateView(key, dependsOn(reason))
 			}
+			return reason != ""
+		})
+		if len(kept) == before {
+			break
 		}
 	}
 	for key, des := range d.des.Views.All() {
@@ -178,6 +203,14 @@ func (d *differ) views() {
 			d.b.add(createViews, "", des.SQL)
 		}
 	}
+}
+
+func (d *differ) recreateView(key, comment string) {
+	cur, des := d.cur.Views.Get(key), d.des.Views.Get(key)
+	d.b.add(dropViewsAndTriggers, comment, "DROP VIEW "+q(cur.Name))
+	d.b.add(createViews, "", des.SQL)
+	d.recreatedViews[key] = true
+	d.dependencies[key] = cur.Name + ", which is created again"
 }
 
 func (d *differ) triggers() {
@@ -199,9 +232,9 @@ func (d *differ) triggers() {
 			d.b.add(createTriggers, "", des.SQL)
 		case dropped:
 			d.b.add(createTriggers, "", des.SQL)
-		default:
-			if t := d.dependency(cur.SQL); t != "" {
-				d.b.add(dropViewsAndTriggers, dependsOn(t), "DROP TRIGGER "+q(cur.Name))
+		case d.dropsColumns:
+			if reason := d.dependency(cur.SQL); reason != "" {
+				d.b.add(dropViewsAndTriggers, dependsOn(reason), "DROP TRIGGER "+q(cur.Name))
 				d.b.add(createTriggers, "", des.SQL)
 			}
 		}
@@ -213,21 +246,19 @@ func (d *differ) triggers() {
 	}
 }
 
-func dependsOn(table string) string {
-	return "drop and create: depends on " + table + ", which drops a column"
+func dependsOn(reason string) string {
+	return "drop and create: depends on " + reason
 }
 
-// dependency returns the name of a table that drops a column and that sql
-// names as an identifier, or "". The check is conservative: a name that
-// stands for something else, such as a column, counts too, and costs only a
-// view or a trigger created again.
+// dependency returns the reason in dependencies for the first name in sql
+// that is there, or "". The check is conservative: a name that stands for
+// something else, such as a column, counts too, and costs only a view or a
+// trigger created again.
 func (d *differ) dependency(sql string) string {
 	for _, t := range statement(sql).Significant() {
-		name := t.Name()
-		if name == "" || !d.dropsColumns[model.Key(name)] {
-			continue
+		if reason, ok := d.dependencies[model.Key(t.Name())]; ok && t.Name() != "" {
+			return reason
 		}
-		return d.cur.Tables.Get(model.Key(name)).Name
 	}
 	return ""
 }

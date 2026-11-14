@@ -1,0 +1,27 @@
+init: |
+  CREATE TABLE t (a, b);
+  CREATE VIEW vc AS SELECT a FROM vb;
+  CREATE VIEW vb AS SELECT a FROM va;
+  CREATE VIEW va AS SELECT a FROM t;
+# Each view comes before the view it reads, so each is found in a pass of its
+# own: va names t, vb names va, and vc names vb.
+desired: |
+  CREATE TABLE t (a);
+  CREATE VIEW vc AS SELECT a FROM vb;
+  CREATE VIEW vb AS SELECT a FROM va;
+  CREATE VIEW va AS SELECT a FROM t;
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   column t.b
+  --
+  -- drop and create: depends on t, which drops a column
+  DROP VIEW va;
+  -- drop and create: depends on va, which is created again
+  DROP VIEW vb;
+  -- drop and create: depends on vb, which is created again
+  DROP VIEW vc;
+  -- drop: removed from schema
+  ALTER TABLE t DROP COLUMN b;
+  CREATE VIEW va AS SELECT a FROM t;
+  CREATE VIEW vb AS SELECT a FROM va;
+  CREATE VIEW vc AS SELECT a FROM vb;
