@@ -51,34 +51,28 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-      # The App token pushes, so that the tag push starts release.yml.
       - uses: actions/checkout@v7.0.1
         with:
           ref: main
-          token: ${{ steps.app-token.outputs.token }}
-      # The release commit and the tag are made as the App's bot. They are not
-      # signed; the release assets are attested instead (release.yml).
-      - name: Set the committer
-        run: |
-          id=$(gh api "users/$SLUG%5Bbot%5D" --jq .id)
-          git config --global user.name "${SLUG}[bot]"
-          git config --global user.email "$id+${SLUG}[bot]@users.noreply.github.com"
-        env:
-          SLUG: ${{ steps.app-token.outputs.app-slug }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-      # Rename [Unreleased] to the version and date in a commit, and tag it.
-      # The link definitions at the bottom of the file follow: [unreleased]
+      # Rename [Unreleased] to the version and date, and tag the commit. The
+      # link definitions at the bottom of the file follow: [unreleased]
       # compares the new tag with HEAD, and the version compares the latest
       # tag with the new one, or lists the commits of the first release.
       # Without that section main itself is tagged and the links stay as they
-      # are. One atomic push lands both or neither, so a failed run leaves main
-      # as it was and a re-run starts over.
-      - name: Commit, tag and push
+      # are.
+      #
+      # The commit, the tag and both refs are made through the API with the
+      # App token. GitHub signs a commit the App makes that way, so it shows
+      # as Verified; one pushed from here would not be signed. A ref the App
+      # creates also starts release.yml, which a ref made with GITHUB_TOKEN
+      # would not. main moves first: if creating the tag fails, a re-run finds
+      # no [Unreleased] section and tags main as it stands.
+      - name: Commit and tag
         run: |
           sed -i "s/^## \[Unreleased\]\$/## [$VERSION] - $(TZ=Asia/Tokyo date +%Y-%m-%d)/" CHANGELOG.md
-          refs=()
+          target=$(git rev-parse HEAD)
           if ! git diff --quiet; then
-            url=https://github.com/$GITHUB_REPOSITORY
+            url=https://github.com/$GH_REPO
             if [ -n "$LATEST" ]; then
               link="$url/compare/v$LATEST...v$VERSION"
             else
@@ -86,14 +80,25 @@ jobs:
             fi
             sed -i -e "s|^\[unreleased\]: .*|[unreleased]: $url/compare/v$VERSION...HEAD|" \
               -e "/^\[unreleased\]: /a [$VERSION]: $link" CHANGELOG.md
-            git commit -q -am "Release v$VERSION"
-            refs+=(HEAD:main)
+            blob=$(base64 -w0 CHANGELOG.md | jq -Rc '{content: ., encoding: "base64"}' |
+              gh api "repos/$GH_REPO/git/blobs" --input - --jq .sha)
+            tree=$(jq -nc --arg base "$(git rev-parse 'HEAD^{tree}')" --arg sha "$blob" \
+              '{base_tree: $base, tree: [{path: "CHANGELOG.md", mode: "100644", type: "blob", sha: $sha}]}' |
+              gh api "repos/$GH_REPO/git/trees" --input - --jq .sha)
+            target=$(gh api "repos/$GH_REPO/git/commits" -f message="Release v$VERSION" \
+              -f tree="$tree" -f "parents[]=$target" --jq .sha)
+            # Not forced: if main moved since the merge, this fails and a
+            # re-run starts from the new main.
+            gh api -X PATCH "repos/$GH_REPO/git/refs/heads/main" -f sha="$target" -F force=false --silent
           fi
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push --atomic origin "${refs[@]}" "v$VERSION"
+          tag=$(gh api "repos/$GH_REPO/git/tags" -f tag="v$VERSION" -f message="Release v$VERSION" \
+            -f object="$target" -f type=commit --jq .sha)
+          gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$tag" --silent
         env:
           VERSION: ${{ needs.version.outputs.version }}
           LATEST: ${{ needs.version.outputs.latest }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
       # Point the release pull request's CHANGELOG link at the tag, which
       # keeps showing the changelog as it was released, and its Changes
       # link at the tag, since the release branch goes away.
