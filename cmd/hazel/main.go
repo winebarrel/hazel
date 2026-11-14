@@ -11,7 +11,7 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/winebarrel/hazel/cmd/command"
-	"github.com/winebarrel/hazel/db"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 var version = "(devel)"
@@ -76,12 +76,6 @@ func versionString() string {
 			}
 		}
 	}
-	if conn, err := db.OpenReadOnly(db.Memory); err == nil {
-		defer conn.Close() //nolint:errcheck
-		var v string
-		if conn.QueryRow("SELECT sqlite_version()").Scan(&v) == nil {
-			b.WriteString(" (SQLite " + v + ")")
-		}
-	}
+	b.WriteString(" (SQLite " + sqlite3.SQLITE_VERSION + ")")
 	return b.String()
 }

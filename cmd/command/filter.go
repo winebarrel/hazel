@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/winebarrel/hazel/diff"
 	"github.com/winebarrel/hazel/model"
 )
 
@@ -55,12 +56,16 @@ func (f *Filter) selects(name string) bool {
 	return (len(f.Include) == 0 || matches(f.Include)) && !matches(f.Exclude)
 }
 
-// Apply returns the objects of s that the filter selects. Indexes and
-// triggers go with the table or view they belong to.
-func (f *Filter) Apply(s *model.Schema) *model.Schema {
-	if len(f.Include) == 0 && len(f.Exclude) == 0 {
-		return s
-	}
+// option returns the diff option that leaves out what the filter does not
+// select. The schemas are given to diff whole, since a selected view may
+// read a table that is left out.
+func (f *Filter) option() diff.Option {
+	return diff.WithExclude(func(name string) bool { return !f.selects(name) })
+}
+
+// count returns the objects of s that the filter selects, for the summary.
+// Indexes and triggers go with the table or view they belong to.
+func (f *Filter) count(s *model.Schema) *model.Schema {
 	return &model.Schema{
 		Tables:   s.Tables.Filter(func(_ string, t *model.Table) bool { return f.selects(t.Name) }),
 		Indexes:  s.Indexes.Filter(func(_ string, i *model.Index) bool { return f.selects(i.Table) }),

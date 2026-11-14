@@ -46,14 +46,13 @@ func (cmd *Plan) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	if err != nil {
 		return err
 	}
-	current, want = cmd.Apply(current), cmd.Apply(want)
-	plan, err := diff.Diff(current, want)
+	plan, err := diff.Diff(current, want, cmd.option())
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintln(w, databaseLine(target, exists))   //nolint:errcheck
-	fmt.Fprintf(w, "-- Plan (%s)\n", summary(want)) //nolint:errcheck
+	fmt.Fprintln(w, databaseLine(target, exists))              //nolint:errcheck
+	fmt.Fprintf(w, "-- Plan (%s)\n", summary(cmd.count(want))) //nolint:errcheck
 	return writePlan(w, plan, cmd.AllowTableRebuild, cmd.Check.Check)
 }
 

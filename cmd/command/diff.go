@@ -27,7 +27,7 @@ func (cmd *Diff) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	if err != nil {
 		return err
 	}
-	plan, err := diff.Diff(cmd.Apply(current), cmd.Apply(want))
+	plan, err := diff.Diff(current, want, cmd.option())
 	if err != nil {
 		return err
 	}

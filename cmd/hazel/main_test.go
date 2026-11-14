@@ -202,6 +202,7 @@ func TestConfig(t *testing.T) {
 		"hazel.yml":  "allow-table-rebuild: true\nexclude:\n  - tmp_*\n",
 		"check.yml":  "check: true\n",
 		"bad.yml":    "allow_table_rebuild: true\n",
+		"broken.yml": "exclude: [",
 	})
 	createDB(t, "app.db", "CREATE TABLE t (a INT)")
 
@@ -226,6 +227,10 @@ func TestConfig(t *testing.T) {
 	_, errOut, code = hazel(t, "-C", "bad.yml", "plan", "app.db", "schema.sql")
 	assert.Equal(t, 80, code)
 	assert.Contains(t, errOut, "unknown config key(s): allow_table_rebuild")
+
+	_, errOut, code = hazel(t, "-C", "broken.yml", "plan", "app.db", "schema.sql")
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, errOut, "yaml: line 1")
 }
 
 func TestPlanErrors(t *testing.T) {
@@ -234,6 +239,8 @@ func TestPlanErrors(t *testing.T) {
 		"text.db":    "this is not a database",
 		"broken.sql": "CREATE TABLE t (",
 	})
+	// A view whose table was dropped cannot be read.
+	createDB(t, "broken_view.db", "CREATE TABLE b (x); CREATE VIEW v AS SELECT x FROM b; DROP TABLE b;")
 	tests := []struct {
 		args []string
 		code int
@@ -245,6 +252,7 @@ func TestPlanErrors(t *testing.T) {
 		{[]string{"plan", "app.db", "broken.sql"}, 1, "broken.sql:1:"},
 		{[]string{"plan", "app.db?mode=ro", "schema.sql"}, 1, "must not contain '?'"},
 		{[]string{"plan", "--no-such-flag", "app.db", "schema.sql"}, 80, "unknown flag --no-such-flag"},
+		{[]string{"plan", "broken_view.db", "schema.sql"}, 1, "view v: "},
 	}
 	for _, tt := range tests {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
@@ -298,4 +306,83 @@ CREATE TABLE u (c);
 
 	_, _, code = hazel(t, "diff", "old.sql")
 	assert.Equal(t, 80, code)
+
+	_, errOut, code := hazel(t, "diff", "missing.sql", "new.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "missing.sql")
+	_, errOut, code = hazel(t, "diff", "old.sql", "missing.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "missing.sql")
+}
+
+func TestPlanFilterKeepsWhatViewsRead(t *testing.T) {
+	const schema = `
+CREATE TABLE legacy_users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE users (id INTEGER PRIMARY KEY, legacy_id INT);
+CREATE VIEW v AS SELECT u.id, l.name FROM users u JOIN legacy_users l ON l.id = u.legacy_id;
+`
+	workdir(t, map[string]string{
+		"same.sql": schema,
+		"renamed.sql": `
+CREATE TABLE legacy_users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY,
+  -- hazel:renamed-from legacy_id
+  old_id INT
+);
+CREATE VIEW v AS SELECT u.id, l.name FROM users u JOIN legacy_users l ON l.id = u.old_id;
+`,
+	})
+	createDB(t, "app.db", schema)
+
+	// The view reads an excluded table, which stays in the schemas diff
+	// compiles, so the view compares equal.
+	out, _, code := hazel(t, "plan", "-E", "legacy_*", "app.db", "same.sql")
+	assert.Equal(t, 0, code)
+	assert.True(t, strings.HasSuffix(out, "-- Plan (1 table, 1 view, 0 indexes, 0 triggers)\n-- No changes\n"), out)
+
+	// The rename is replayed with the excluded table in place.
+	out, errOut, code := hazel(t, "plan", "-E", "legacy_*", "app.db", "renamed.sql")
+	assert.Equal(t, 0, code, errOut)
+	assert.True(t, strings.HasSuffix(out, "ALTER TABLE users RENAME COLUMN legacy_id TO old_id;\n"), out)
+}
+
+func TestPlanFilterPlansNothingForExcluded(t *testing.T) {
+	// legacy_v is excluded, so nothing is planned for it, not even to make
+	// way for the DROP COLUMN, which it stands in the way of: that apply
+	// fails, and it is for the user to deal with.
+	workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE users (id INTEGER PRIMARY KEY, legacy_id INT);
+CREATE TABLE legacy_users (id INTEGER PRIMARY KEY, name TEXT);
+`})
+	createDB(t, "app.db", `
+CREATE TABLE users (id INTEGER PRIMARY KEY, legacy_id INT, old TEXT);
+CREATE TABLE legacy_users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE VIEW legacy_v AS SELECT u.id, u.old FROM users u;
+CREATE INDEX legacy_users_name ON legacy_users (name);
+CREATE TRIGGER legacy_users_ai AFTER INSERT ON legacy_users BEGIN SELECT 1; END;
+`)
+	out, _, code := hazel(t, "plan", "-E", "legacy_*", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.True(t, strings.HasSuffix(out, `-- drop: removed from schema
+ALTER TABLE users DROP COLUMN old;
+`), out)
+	assert.NotContains(t, out, "legacy_v")
+	assert.NotContains(t, out, "legacy_users_name")
+	assert.NotContains(t, out, "legacy_users_ai")
+}
+
+func TestPlanSummaryWithFilter(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE t (a);
+CREATE INDEX t_a ON t (a);
+CREATE TRIGGER t_ai AFTER INSERT ON t BEGIN SELECT 1; END;
+CREATE TABLE tmp_x (a);
+CREATE INDEX tmp_x_a ON tmp_x (a);
+CREATE TRIGGER tmp_x_ai AFTER INSERT ON tmp_x BEGIN SELECT 1; END;
+CREATE VIEW tmp_v AS SELECT a FROM t;
+`})
+	out, _, code := hazel(t, "plan", "-E", "tmp_*", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "-- Plan (1 table, 0 views, 1 index, 1 trigger)\n")
 }

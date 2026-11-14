@@ -49,16 +49,20 @@ const (
 // FOREIGN KEY, STRICT, WITHOUT ROWID, AUTOINCREMENT, and adding a STORED
 // column or a column with a non-constant DEFAULT. The rebuild makes the
 // table's other changes too, so it gets no ALTER.
-func Diff(current, desired *model.Schema) (*Plan, error) {
+func Diff(current, desired *model.Schema, opts ...Option) (*Plan, error) {
 	ex, err := newExplainer(desired)
 	if err != nil {
 		return nil, err
 	}
 	defer ex.close()
 	d := &differ{
-		ex:  ex,
-		cur: current, des: desired,
+		ex:      ex,
+		exclude: func(string) bool { return false },
+		cur:     current, des: desired,
 		dependencies: map[string]string{}, recreatedViews: map[string]bool{}, rebuilt: map[string]bool{},
+	}
+	for _, o := range opts {
+		o(d)
 	}
 	if err := d.renames(); err != nil {
 		return nil, err
@@ -70,8 +74,22 @@ func Diff(current, desired *model.Schema) (*Plan, error) {
 	return d.b.plan(), nil
 }
 
+// Option changes how Diff plans.
+type Option func(*differ)
+
+// WithExclude leaves out of the plan the tables, views and virtual tables
+// whose name exclude reports, and the indexes and triggers that belong to
+// them. They stay in the schemas Diff compiles and replays, so that what
+// reads them still compiles, but no statement is planned for them, not even
+// to make way for a DROP COLUMN or a RENAME: if one of them stands in the
+// way, the apply fails.
+func WithExclude(exclude func(name string) bool) Option {
+	return func(d *differ) { d.exclude = exclude }
+}
+
 type differ struct {
 	ex       *explainer
+	exclude  func(name string) bool
 	cur, des *model.Schema
 	b        builder
 	// rechecks reports whether the plan runs an ALTER TABLE that checks every
@@ -100,6 +118,7 @@ func (d *differ) tables() {
 	for key, cur := range d.cur.Tables.All() {
 		des, ok := d.des.Tables.GetOk(key)
 		switch {
+		case d.exclude(cur.Name):
 		case ok && des.Ignored:
 		case !ok:
 			d.b.add(dropTables, removed, "DROP TABLE "+q(cur.Name))
@@ -115,7 +134,7 @@ func (d *differ) tables() {
 		}
 	}
 	for key, des := range d.des.Tables.All() {
-		if !d.cur.Tables.Has(key) && !des.Ignored {
+		if !d.cur.Tables.Has(key) && !des.Ignored && !d.exclude(des.Name) {
 			d.b.add(createTables, "", des.SQL)
 		}
 	}
@@ -317,6 +336,7 @@ func (d *differ) indexes() {
 	for key, cur := range d.cur.Indexes.All() {
 		des, ok := d.des.Indexes.GetOk(key)
 		switch {
+		case d.exclude(cur.Table) || ok && d.exclude(des.Table):
 		case d.rebuilt[model.Key(cur.Table)]:
 			// The index goes with the table, and an ignored one is created
 			// again as it is.
@@ -335,7 +355,7 @@ func (d *differ) indexes() {
 		}
 	}
 	for key, des := range d.des.Indexes.All() {
-		if des.Ignored {
+		if des.Ignored || d.exclude(des.Table) {
 			continue
 		}
 		if !d.cur.Indexes.Has(key) || d.rebuilt[model.Key(des.Table)] {
@@ -349,6 +369,7 @@ func (d *differ) views() {
 	for key, cur := range d.cur.Views.All() {
 		des, ok := d.des.Views.GetOk(key)
 		switch {
+		case d.exclude(cur.Name):
 		case ok && des.Ignored:
 			// An ignored view is left as it is, unless the schema check of
 			// an ALTER makes it be created again, as current has it.
@@ -377,7 +398,7 @@ func (d *differ) views() {
 		}
 	}
 	for key, des := range d.des.Views.All() {
-		if !d.cur.Views.Has(key) && !des.Ignored {
+		if !d.cur.Views.Has(key) && !des.Ignored && !d.exclude(des.Name) {
 			d.b.add(createViews, "", des.SQL)
 		}
 	}
@@ -398,6 +419,9 @@ func (d *differ) recreateView(key, comment string) {
 func (d *differ) triggers() {
 	for key, cur := range d.cur.Triggers.All() {
 		des, ok := d.des.Triggers.GetOk(key)
+		if d.exclude(cur.Table) || ok && d.exclude(des.Table) {
+			continue
+		}
 		table := model.Key(cur.Table)
 		// The DROP VIEW of a view created again drops its triggers, and so
 		// does the DROP TABLE of a table that is dropped or rebuilt.
@@ -433,7 +457,7 @@ func (d *differ) triggers() {
 		}
 	}
 	for key, des := range d.des.Triggers.All() {
-		if !d.cur.Triggers.Has(key) && !des.Ignored {
+		if !d.cur.Triggers.Has(key) && !des.Ignored && !d.exclude(des.Table) {
 			d.b.add(createTriggers, "", des.SQL)
 		}
 	}
