@@ -14,6 +14,8 @@ theme:
   features:
     - navigation.sections
     - navigation.indexes
+    # Opens every collapsible subsection, such as Commands, so the whole tree
+    # is visible without clicking through it.
     - navigation.expand
     - navigation.top
     - content.code.copy
