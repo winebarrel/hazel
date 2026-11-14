@@ -1,0 +1,53 @@
+site_name: hazel
+site_description: Declarative schema management tool for SQLite
+site_url: https://winebarrel.github.io/hazel/
+repo_url: https://github.com/winebarrel/hazel
+repo_name: winebarrel/hazel
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  # The option lists on the command pages are definition lists.
+  - def_list
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Reference:
+      - Commands:
+          - reference/commands/index.md
+          - reference/commands/plan.md
+          - reference/commands/apply.md
+          - reference/commands/dump.md
+          - reference/commands/fmt.md
+          - reference/commands/diff.md
+      - reference/objects.md
+      - reference/directives.md
+      - reference/configuration.md
+      - reference/exit-status.md

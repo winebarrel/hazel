@@ -34,3 +34,6 @@ go.work.sum
 
 # The hazel binary built by make build
 /hazel
+
+# The documentation site built by mkdocs build
+/site/

@@ -1,1 +1,75 @@
 # hazel
+
+[![CI](https://github.com/winebarrel/hazel/actions/workflows/ci.yml/badge.svg)](https://github.com/winebarrel/hazel/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/winebarrel/hazel/graph/badge.svg)](https://codecov.io/gh/winebarrel/hazel)
+
+hazel is a declarative schema management tool for SQLite. It reads the desired schema from SQL files and generates the DDL that brings a database in line with it.
+
+Documentation: <https://winebarrel.github.io/hazel/>
+
+## How it works
+
+The schema files are run in an in-memory database and read back from `sqlite_schema` and the schema PRAGMAs, the same way the target database is read. The two schemas are compared, and the difference becomes `ALTER TABLE` where SQLite supports the change, or a rebuild of the table, which runs only when it is allowed. Expressions and views are compared by the bytecode SQLite compiles them to.
+
+## Install
+
+```
+go install github.com/winebarrel/hazel/cmd/hazel@latest
+```
+
+hazel bundles SQLite through [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite), so it needs no C compiler and no SQLite library.
+
+## Quick start
+
+Write the schema of an existing database to a file:
+
+```
+$ hazel dump app.db > schema.sql
+```
+
+Edit `schema.sql`, for example to add a column, and see the DDL that takes the database to it:
+
+```
+$ hazel plan app.db schema.sql
+-- Database: /path/to/app.db
+-- Plan (1 table, 0 views, 1 index, 0 triggers)
+ALTER TABLE users ADD COLUMN email TEXT;
+```
+
+Run it in one transaction:
+
+```
+$ hazel apply app.db schema.sql
+-- Database: /path/to/app.db
+-- Plan (1 table, 0 views, 1 index, 0 triggers)
+ALTER TABLE users ADD COLUMN email TEXT;
+-- ok (0ms)
+-- Applied 1 statement
+```
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `plan DB SCHEMA_FILE...` | Print the DDL that takes the database to the schema files. |
+| `apply DB SCHEMA_FILE...` | Run that DDL in one transaction. |
+| `dump DB` | Print the schema of the database as SQL. |
+| `fmt SCHEMA_FILE...` | Lay out the schema files in place. |
+| `diff OLD_SCHEMA_FILE NEW_SCHEMA_FILE` | Print the DDL that takes one schema file to another. |
+
+See the [command reference](https://winebarrel.github.io/hazel/reference/commands/) for the options.
+
+## Development
+
+```
+make build  # builds ./hazel
+make test
+make lint
+```
+
+The documentation site is built with [MkDocs](https://www.mkdocs.org/) from `docs/`:
+
+```
+pip install -r requirements-docs.txt
+mkdocs serve
+```
