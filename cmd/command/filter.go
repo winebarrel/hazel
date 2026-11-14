@@ -60,7 +60,12 @@ func (f *Filter) selects(name string) bool {
 // select. The schemas are given to diff whole, since a selected view may
 // read a table that is left out.
 func (f *Filter) option() diff.Option {
-	return diff.WithExclude(func(name string) bool { return !f.selects(name) })
+	return diff.WithExclude(f.excludes)
+}
+
+// excludes reports whether the name is left out: the opposite of selects.
+func (f *Filter) excludes(name string) bool {
+	return !f.selects(name)
 }
 
 // count returns the objects of s that the filter selects, for the summary.
