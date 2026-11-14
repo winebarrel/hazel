@@ -1,0 +1,23 @@
+init: |
+  CREATE TABLE t (a INT, b TEXT);
+  CREATE INDEX t_lower_b ON t (lower(b));
+  CREATE INDEX t_a ON t (a) WHERE a > 0;
+  CREATE VIEW v AS SELECT a AS x FROM t;
+  CREATE VIEW w AS SELECT a FROM t WHERE a > 0;
+# A different expression, WHERE, column alias or view body is a change.
+desired: |
+  CREATE TABLE t (a INT, b TEXT);
+  CREATE INDEX t_lower_b ON t (upper(b));
+  CREATE INDEX t_a ON t (a) WHERE 0 < a;
+  CREATE VIEW v AS SELECT a AS y FROM t;
+  CREATE VIEW w AS SELECT a FROM t WHERE a >= 0;
+plan: |
+  -- drop and create: definition changed
+  DROP VIEW v;
+  DROP VIEW w;
+  DROP INDEX t_lower_b;
+  DROP INDEX t_a;
+  CREATE INDEX t_lower_b ON t (upper(b));
+  CREATE INDEX t_a ON t (a) WHERE 0 < a;
+  CREATE VIEW v AS SELECT a AS y FROM t;
+  CREATE VIEW w AS SELECT a FROM t WHERE a >= 0;

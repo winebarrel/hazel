@@ -38,8 +38,11 @@ const (
 // apply time when existing rows break them, since SQLite checks the rows
 // as it runs them.
 //
-// Definitions are compared with parser.TokensEqual, and constraints by their
-// content, not their names. A table that needs a change ALTER TABLE cannot
+// Expressions (CHECK, DEFAULT, generated columns, index expressions and the
+// WHERE of a partial index) and views are compared by the bytecode SQLite
+// compiles them to (see explainer). Type names, collation names, triggers
+// and virtual tables are compared with parser.TokensEqual. Constraints are
+// compared by their content, not their names. A table that needs a change ALTER TABLE cannot
 // make is rebuilt (see rebuild), and Plan.Rebuilds lists it: a column's type,
 // DEFAULT, COLLATE or generated expression, the PRIMARY KEY, a UNIQUE
 // constraint, adding or changing a FOREIGN KEY, dropping an unnamed CHECK or
@@ -47,7 +50,13 @@ const (
 // column or a column with a non-constant DEFAULT. The rebuild makes the
 // table's other changes too, so it gets no ALTER.
 func Diff(current, desired *model.Schema) (*Plan, error) {
+	ex, err := newExplainer(desired)
+	if err != nil {
+		return nil, err
+	}
+	defer ex.close()
 	d := &differ{
+		ex:  ex,
 		cur: current, des: desired,
 		dependencies: map[string]string{}, recreatedViews: map[string]bool{}, rebuilt: map[string]bool{},
 	}
@@ -62,6 +71,7 @@ func Diff(current, desired *model.Schema) (*Plan, error) {
 }
 
 type differ struct {
+	ex       *explainer
 	cur, des *model.Schema
 	b        builder
 	// rechecks reports whether the plan runs an ALTER TABLE that checks every
@@ -154,7 +164,11 @@ func (d *differ) alterTable(cur, des *model.Table) {
 	// CONSTRAINT, and a new CHECK is added with ADD CHECK. An unnamed one
 	// cannot be dropped that way, and a FOREIGN KEY cannot be added.
 	dropFKs, addFKs := unmatched(cur.ForeignKeys, desFKs, foreignKeyEqual)
-	dropChecks, addChecks := unmatched(cur.Checks, desChecks, checkEqual)
+	// CHECK constraints are compared by their expressions, not their names,
+	// and a CHECK of a column equals the same CHECK of the table.
+	dropChecks, addChecks := unmatched(cur.Checks, desChecks, func(a, b *model.Check) bool {
+		return d.ex.sameExpr(a.Expr, b.Expr, des.Name)
+	})
 	switch {
 	case len(addFKs) > 0 || slices.ContainsFunc(dropFKs, func(fk *model.ForeignKey) bool { return fk.Name == "" }):
 		need("FOREIGN KEY constraint")
@@ -176,7 +190,7 @@ func (d *differ) alterTable(cur, des *model.Table) {
 			changes = append(changes, "drops column "+c.Name)
 			continue
 		}
-		for _, what := range columnChanges(c, dc) {
+		for _, what := range d.columnChanges(c, dc, des.Name) {
 			need(what + " of " + dc.Name)
 		}
 		if c.NotNull != dc.NotNull {
@@ -238,20 +252,21 @@ func (d *differ) alterTable(cur, des *model.Table) {
 	}
 }
 
-// columnChanges lists what differs between two columns that ALTER TABLE
-// cannot change. NOT NULL is not among them: ALTER COLUMN changes it.
-func columnChanges(a, b *model.Column) []string {
+// columnChanges lists what differs between two columns of table that ALTER
+// TABLE cannot change. NOT NULL is not among them: ALTER COLUMN changes it.
+// The DEFAULT and the generated expression are compared by their bytecode.
+func (d *differ) columnChanges(a, b *model.Column, table string) []string {
 	var changes []string
 	if !sqlEqual(a.Type, b.Type) {
 		changes = append(changes, "type")
 	}
-	if !ptrEqual(a.Default, b.Default) {
+	if (a.Default == nil) != (b.Default == nil) || a.Default != nil && !d.ex.sameExpr(*a.Default, *b.Default, "") {
 		changes = append(changes, "DEFAULT")
 	}
 	if !parser.EqualFold(collation(a), collation(b)) {
 		changes = append(changes, "COLLATE")
 	}
-	if a.Generated != b.Generated || !sqlEqual(a.GeneratedExpr, b.GeneratedExpr) {
+	if a.Generated != b.Generated || a.Generated != model.NotGenerated && !d.ex.sameExpr(a.GeneratedExpr, b.GeneratedExpr, table) {
 		changes = append(changes, "generated expression")
 	}
 	return changes
@@ -314,7 +329,7 @@ func (d *differ) indexes() {
 			if d.des.Tables.Has(model.Key(cur.Table)) {
 				d.b.add(dropIndexes, removed, "DROP INDEX "+q(cur.Name))
 			}
-		case !sqlEqual(cur.SQL, des.SQL):
+		case !d.ex.sameIndex(cur, des):
 			d.b.add(dropIndexes, definitionChanged, "DROP INDEX "+q(cur.Name))
 			d.b.add(createIndexes, "", des.SQL)
 		}
@@ -340,7 +355,7 @@ func (d *differ) views() {
 			kept = append(kept, key)
 		case !ok:
 			d.b.add(dropViewsAndTriggers, removed, "DROP VIEW "+q(cur.Name))
-		case !sqlEqual(cur.SQL, des.SQL):
+		case !d.ex.sameView(cur, des):
 			d.recreateView(key, definitionChanged)
 		default:
 			kept = append(kept, key)
@@ -459,19 +474,6 @@ func collation(c *model.Column) string {
 		return "BINARY"
 	}
 	return c.Collation
-}
-
-// checkEqual compares two CHECK constraints by their expressions. Names are
-// not compared, and a CHECK of a column equals the same CHECK of the table.
-func checkEqual(a, b *model.Check) bool {
-	return sqlEqual(a.Expr, b.Expr)
-}
-
-func ptrEqual(a, b *string) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
 }
 
 func indexColumnsEqual(a, b []*model.IndexColumn) bool {

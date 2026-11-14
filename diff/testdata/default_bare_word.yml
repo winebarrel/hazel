@@ -1,0 +1,7 @@
+init: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, status TEXT DEFAULT active);
+# In a DEFAULT, SQLite takes a bare word for a string, and SELECT (active)
+# does not compile. Expressions that do not compile are compared by tokens.
+desired: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, status TEXT DEFAULT active);
+plan: ""

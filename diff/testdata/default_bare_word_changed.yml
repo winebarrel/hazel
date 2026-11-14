@@ -1,0 +1,10 @@
+init: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, status TEXT DEFAULT active);
+desired: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, status TEXT DEFAULT closed);
+plan: |
+  -- table rebuild: t (DEFAULT of status)
+  CREATE TABLE new_t (id INTEGER PRIMARY KEY, status TEXT DEFAULT closed);
+  INSERT INTO new_t (id, status) SELECT id, status FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;
