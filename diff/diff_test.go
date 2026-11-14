@@ -16,6 +16,7 @@ import (
 	"github.com/winebarrel/hazel/desired"
 	"github.com/winebarrel/hazel/diff"
 	"github.com/winebarrel/hazel/model"
+	"github.com/winebarrel/orderedmap/v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -263,4 +264,14 @@ func TestRebuildWithoutRowid(t *testing.T) {
 	conn := openDB(t, `CREATE TABLE t (k TEXT PRIMARY KEY, a INT);`)
 	plan := applyPlan(t, conn, `CREATE TABLE t (k TEXT PRIMARY KEY, a INT) WITHOUT ROWID;`)
 	assert.Contains(t, plan.Statements(), `INSERT INTO new_t (k, a) SELECT k, a FROM t;`)
+}
+
+func TestDiffInvalidDesired(t *testing.T) {
+	// The desired schema is compiled in memory to compare expressions, so a
+	// schema SQLite rejects is an error. desired.Load never gives one; this
+	// one is built by hand.
+	des := model.NewSchema()
+	des.Tables.Set("t", &model.Table{Name: "t", SQL: "CREATE TABLE t (", Columns: orderedmap.New[string, *model.Column]()})
+	_, err := diff.Diff(model.NewSchema(), des)
+	assert.ErrorContains(t, err, "CREATE TABLE t (")
 }
