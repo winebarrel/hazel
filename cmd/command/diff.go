@@ -17,7 +17,7 @@ type Diff struct {
 }
 
 // Run prints the DDL that takes one schema file to the other. No database is
-// read.
+// read, so the statements marked with -- hazel:execute are not shown.
 func (cmd *Diff) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	current, err := loadFiles(ctx, []string{cmd.Old}, stderr)
 	if err != nil {
@@ -27,9 +27,9 @@ func (cmd *Diff) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	if err != nil {
 		return err
 	}
-	plan, err := diff.Diff(current, want, cmd.option())
+	plan, err := diff.Diff(current.Schema, want.Schema, cmd.option())
 	if err != nil {
 		return err
 	}
-	return writePlan(w, plan, cmd.AllowTableRebuild, cmd.Check.Check)
+	return writePlan(w, plan, nil, cmd.AllowTableRebuild, cmd.Check.Check)
 }

@@ -105,6 +105,7 @@ func Load(ctx context.Context, srcs []Source) (*Result, error) {
 		phases:       make([][]statement, triggerPhase+1),
 		ignored:      map[parser.StatementKind]map[string]bool{},
 		tableRename:  map[string]string{},
+		skipFKCheck:  map[string]bool{},
 		columnRename: map[string]map[string]string{},
 	}
 	for _, src := range srcs {
@@ -138,6 +139,9 @@ type loader struct {
 	ignored map[parser.StatementKind]map[string]bool
 	// tableRename maps a table's key to its old name.
 	tableRename map[string]string
+	// skipFKCheck holds the keys of the tables marked with
+	// -- hazel:skip-foreign-key-check.
+	skipFKCheck map[string]bool
 	// columnRename maps a table's key and a column's key to the column's old
 	// name.
 	columnRename map[string]map[string]string
@@ -196,6 +200,11 @@ func (l *loader) readStatement(file string, stmt parser.Statement) error {
 				l.ignored[kind] = map[string]bool{}
 			}
 			l.ignored[kind][key] = true
+		case parser.SkipForeignKeyCheck:
+			if kind != parser.CreateTable {
+				return misplaced(d, "a table")
+			}
+			l.skipFKCheck[key] = true
 		case parser.RenamedFrom:
 			if kind != parser.CreateTable {
 				return misplaced(d, "a table or a column")
@@ -260,6 +269,7 @@ func needsName(file string, d parser.Directive) error {
 func (l *loader) mark(s *model.Schema) {
 	for key, t := range s.Tables.All() {
 		t.RenamedFrom = l.tableRename[key]
+		t.SkipForeignKeyCheck = l.skipFKCheck[key]
 		t.Ignored = l.ignored[parser.CreateTable][key] || l.ignored[parser.CreateVirtualTable][key]
 		for ckey, c := range t.Columns.All() {
 			c.RenamedFrom = l.columnRename[key][ckey]

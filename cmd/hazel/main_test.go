@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -385,4 +386,374 @@ CREATE VIEW tmp_v AS SELECT a FROM t;
 	out, _, code := hazel(t, "plan", "-E", "tmp_*", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
 	assert.Contains(t, out, "-- Plan (1 table, 0 views, 1 index, 1 trigger)\n")
+}
+
+func query(t *testing.T, path, q string) string {
+	t.Helper()
+	conn, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	defer conn.Close()
+	var out sql.NullString
+	require.NoError(t, conn.QueryRow(q).Scan(&out))
+	return out.String
+}
+
+func TestApply(t *testing.T) {
+	dir := workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+-- hazel:execute SELECT NOT EXISTS (SELECT 1 FROM settings WHERE key = 'version')
+INSERT INTO settings VALUES ('version', '1');
+-- hazel:execute
+UPDATE settings SET value = value || '!' WHERE key = 'version';
+`})
+	out, _, code := hazel(t, "apply", "app.db", "schema.sql")
+	require.Equal(t, 0, code, out)
+	assert.Regexp(t, `^-- Database: `+regexp.QuoteMeta(filepath.Join(dir, "app.db"))+` \(new file\)
+-- Plan \(2 tables, 0 views, 0 indexes, 0 triggers\)
+CREATE TABLE settings \(key TEXT PRIMARY KEY, value TEXT\);
+-- ok \(\d+ms\)
+CREATE TABLE users \(id INTEGER PRIMARY KEY, name TEXT\);
+-- ok \(\d+ms\)
+-- hazel:execute SELECT NOT EXISTS \(SELECT 1 FROM settings WHERE key = 'version'\)
+INSERT INTO settings VALUES \('version', '1'\);
+-- ok \(\d+ms\)
+-- hazel:execute
+UPDATE settings SET value = value \|\| '!' WHERE key = 'version';
+-- ok \(\d+ms\)
+-- Applied 4 statements
+$`, out)
+	assert.Equal(t, "1!", query(t, "app.db", "SELECT value FROM settings"))
+
+	// The condition is false now; the statement without one runs again.
+	out, _, code = hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.NotContains(t, out, "INSERT INTO settings")
+	assert.Contains(t, out, "-- Applied 1 statement\n")
+	assert.Equal(t, "1!!", query(t, "app.db", "SELECT value FROM settings"))
+}
+
+func TestApplyNoChanges(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);"})
+	createDB(t, "app.db", "CREATE TABLE t (a)")
+	out, _, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.True(t, strings.HasSuffix(out, "-- No changes\n"), out)
+}
+
+func TestPlanExecute(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+-- hazel:execute SELECT NOT EXISTS (SELECT 1 FROM settings WHERE key = 'version')
+INSERT INTO settings VALUES ('version', '1');
+-- hazel:execute SELECT count(*) = 0 FROM new_table
+INSERT INTO settings VALUES ('other', '2');
+`})
+	createDB(t, "app.db", "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT); INSERT INTO settings VALUES ('version', '0');")
+
+	// The condition that is false leaves its statement out; the one that
+	// cannot be evaluated keeps it, with a note.
+	out, _, code := hazel(t, "plan", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.True(t, strings.HasSuffix(out, `-- hazel:execute SELECT count(*) = 0 FROM new_table
+-- check SQL could not be evaluated at plan time: SQL logic error: no such table: new_table (1); apply will decide
+INSERT INTO settings VALUES ('other', '2');
+`), out)
+	assert.NotContains(t, out, "'version', '1'")
+
+	// A statement to run is a change for --check.
+	_, _, code = hazel(t, "plan", "--check", "app.db", "schema.sql")
+	assert.Equal(t, 2, code)
+
+	// apply cannot leave it to anyone.
+	_, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "failed to evaluate the condition of hazel:execute: SELECT count(*) = 0 FROM new_table")
+}
+
+func TestExecuteConditionNotBoolean(t *testing.T) {
+	for _, tc := range []struct {
+		cond string
+		got  string
+	}{
+		{"SELECT count(*) FROM settings", "2"},
+		{"SELECT NULL", "NULL"},
+		{"SELECT 'yes'", "'yes'"},
+		{"SELECT 1.0", "1.0"},
+		{"SELECT X'01'", "X'01'"},
+		{"SELECT 1e100", "1e+100"},
+		{"SELECT 1 FROM settings WHERE 0", "no rows"},
+	} {
+		t.Run(tc.cond, func(t *testing.T) {
+			workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+-- hazel:execute ` + tc.cond + `
+INSERT INTO settings VALUES ('c', '3');
+`})
+			createDB(t, "app.db", "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT); INSERT INTO settings VALUES ('a', '1'), ('b', '2');")
+			want := "the condition of hazel:execute must return 0 or 1: " + tc.cond + ": got " + tc.got
+
+			_, errOut, code := hazel(t, "plan", "app.db", "schema.sql")
+			assert.Equal(t, 1, code)
+			assert.Contains(t, errOut, want)
+
+			_, errOut, code = hazel(t, "apply", "app.db", "schema.sql")
+			assert.Equal(t, 1, code)
+			assert.Contains(t, errOut, want)
+			assert.Equal(t, "2", query(t, "app.db", "SELECT count(*) FROM settings"))
+		})
+	}
+}
+
+// A condition that plan cannot evaluate is checked again by apply, after
+// the DDL.
+func TestApplyExecuteConditionNotBoolean(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE t (a);
+-- hazel:execute SELECT max(a) FROM t
+INSERT INTO settings VALUES ('c', '3');
+`})
+	createDB(t, "app.db", "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);")
+
+	out, _, code := hazel(t, "plan", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "-- check SQL could not be evaluated at plan time: SQL logic error: no such table: t (1); apply will decide\n")
+
+	_, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "the condition of hazel:execute must return 0 or 1: SELECT max(a) FROM t: got NULL")
+	assert.Equal(t, "0", query(t, "app.db", "SELECT count(*) FROM sqlite_schema WHERE name = 't'"))
+}
+
+func TestApplyRebuild(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT);"})
+	createDB(t, "app.db", "CREATE TABLE t (id INTEGER PRIMARY KEY, a INT); INSERT INTO t VALUES (1, 10);")
+
+	out, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 3, code)
+	assert.True(t, strings.HasSuffix(out, "-- table rebuild required: t (type of a)\n"), out)
+	assert.Contains(t, errOut, "1 table needs a rebuild")
+	assert.Equal(t, "INT", query(t, "app.db", "SELECT type FROM pragma_table_info('t') WHERE name = 'a'"))
+
+	_, _, code = hazel(t, "apply", "--allow-table-rebuild", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "TEXT", query(t, "app.db", "SELECT type FROM pragma_table_info('t') WHERE name = 'a'"))
+	assert.Equal(t, "10", query(t, "app.db", "SELECT a FROM t"))
+}
+
+func TestApplyRollsBack(t *testing.T) {
+	// Each plan adds a column before the statement that fails; after the
+	// rollback, the column is not there.
+	tests := []struct {
+		name          string
+		init          string
+		schema        string
+		table, column string
+		want          string
+	}{
+		{
+			name:   "set not null",
+			init:   "CREATE TABLE t (a, b); INSERT INTO t VALUES (NULL, 1);",
+			schema: "CREATE TABLE t (a NOT NULL, b, c);",
+			table:  "t", column: "c",
+			want: "ALTER TABLE t ALTER COLUMN a SET NOT NULL: existing rows in t have NULL in a: constraint failed",
+		},
+		{
+			name:   "named check",
+			init:   "CREATE TABLE t (a); INSERT INTO t VALUES (-1);",
+			schema: "CREATE TABLE t (a, b, CONSTRAINT a_positive CHECK (a > 0));",
+			table:  "t", column: "b",
+			want: "ALTER TABLE t ADD CONSTRAINT a_positive CHECK (a > 0): existing rows in t violate a_positive: constraint failed",
+		},
+		{
+			name:   "unnamed check",
+			init:   "CREATE TABLE t (a); INSERT INTO t VALUES (-1);",
+			schema: "CREATE TABLE t (a, b, CHECK (a > 0));",
+			table:  "t", column: "b",
+			want: "ALTER TABLE t ADD CHECK (a > 0): existing rows in t violate the CHECK constraint: constraint failed",
+		},
+		{
+			name:   "other",
+			init:   "CREATE TABLE t (a); INSERT INTO t VALUES (1), (1);",
+			schema: "CREATE TABLE t (a, b); CREATE UNIQUE INDEX t_a ON t (a);",
+			table:  "t", column: "b",
+			want: "CREATE UNIQUE INDEX t_a ON t (a): constraint failed: UNIQUE constraint failed: t.a",
+		},
+		{
+			name:   "foreign key check",
+			init:   "CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE c (pid); INSERT INTO c VALUES (9);",
+			schema: "CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE c (pid REFERENCES p (id), x);",
+			table:  "c", column: "x",
+			want: "foreign key violations, rolled back: c (rowid 1) refers to a missing row of p",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workdir(t, map[string]string{"schema.sql": tt.schema})
+			createDB(t, "app.db", tt.init)
+			_, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", "schema.sql")
+			assert.Equal(t, 1, code)
+			assert.Contains(t, errOut, tt.want)
+			assert.Equal(t, "0", query(t, "app.db",
+				"SELECT count(*) FROM pragma_table_info('"+tt.table+"') WHERE name = '"+tt.column+"'"))
+		})
+	}
+}
+
+func TestApplyBusy(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);"})
+	createDB(t, "app.db", "CREATE TABLE u (a)")
+	other, err := sql.Open("sqlite", "app.db")
+	require.NoError(t, err)
+	defer other.Close()
+	tx, err := other.Begin()
+	require.NoError(t, err)
+	_, err = tx.Exec("INSERT INTO u VALUES (1)")
+	require.NoError(t, err)
+	defer tx.Rollback()
+
+	_, errOut, code := hazel(t, "apply", "--busy-timeout=100ms", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "could not lock the database within 100ms")
+}
+
+func TestApplyOptions(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);", "hazel.yml": "busy-timeout: 2s\n"})
+	_, errOut, code := hazel(t, "apply", "--busy-timeout=0s", "app.db", "schema.sql")
+	assert.Equal(t, 80, code)
+	assert.Contains(t, errOut, "--busy-timeout must be greater than 0")
+
+	_, errOut, code = hazel(t, "apply", "-E", "/(/", "app.db", "schema.sql")
+	assert.Equal(t, 80, code)
+	assert.Contains(t, errOut, "invalid pattern")
+
+	t.Setenv("HAZEL_BUSY_TIMEOUT", "-1s")
+	_, _, code = hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 80, code)
+
+	_, _, code = hazel(t, "-C", "hazel.yml", "apply", "--busy-timeout=1s", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+}
+
+func TestApplyMemory(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);"})
+	out, _, code := hazel(t, "apply", ":memory:", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "-- Applied 1 statement\n")
+}
+
+func TestApplyErrors(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);", "text.db": "this is not a database"})
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"apply", "text.db", "schema.sql"}, "not a SQLite database"},
+		{[]string{"apply", "app.db", "missing.sql"}, "missing.sql"},
+		{[]string{"apply", "no/such/dir/app.db", "schema.sql"}, "directory does not exist"},
+		{[]string{"apply", "app.db?x", "schema.sql"}, "must not contain '?'"},
+	} {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			_, errOut, code := hazel(t, tt.args...)
+			assert.Equal(t, 1, code)
+			assert.Contains(t, errOut, tt.want)
+		})
+	}
+}
+
+func TestApplyDataLoss(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);"})
+	createDB(t, "app.db", "CREATE TABLE t (a, b); CREATE TABLE old (x);")
+	out, _, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Regexp(t, `-- Plan \(1 table, 0 views, 0 indexes, 0 triggers\)
+-- WARNING: the following will be dropped and their data will be lost:
+--   table  old
+--   column t.b
+--
+-- drop: removed from schema
+ALTER TABLE t DROP COLUMN b;
+-- ok \(\d+ms\)
+DROP TABLE old;
+-- ok \(\d+ms\)
+-- Applied 2 statements
+$`, out)
+}
+
+func TestApplyExecuteFails(t *testing.T) {
+	// The last statement has no ";", and the plan adds one.
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);\n-- hazel:execute\nINSERT INTO nope VALUES (1)"})
+	out, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, out, "-- hazel:execute\nINSERT INTO nope VALUES (1);\n")
+	assert.Contains(t, errOut, "INSERT INTO nope VALUES (1): SQL logic error: no such table: nope")
+	// The CREATE TABLE is rolled back too.
+	assert.Equal(t, "0", query(t, "app.db", "SELECT count(*) FROM sqlite_schema"))
+}
+
+func TestApplyUnreadableDatabase(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (a);"})
+	createDB(t, "app.db", "CREATE TABLE b (x); CREATE VIEW v AS SELECT x FROM b; DROP TABLE b;")
+	_, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "view v: ")
+}
+
+func TestApplyExistingForeignKeyViolation(t *testing.T) {
+	const tables = `
+CREATE TABLE p (id INTEGER PRIMARY KEY);
+CREATE TABLE s (k TEXT PRIMARY KEY, v TEXT);
+`
+	workdir(t, map[string]string{
+		"schema.sql": tables + `
+CREATE TABLE c (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE TABLE d (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE INDEX s_v ON s (v);
+`,
+		"skip_c.sql": tables + `
+-- hazel:skip-foreign-key-check
+CREATE TABLE c (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE TABLE d (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE INDEX s_v ON s (v);
+`,
+	})
+	newDB := func(t *testing.T, extra string) {
+		t.Helper()
+		require.NoError(t, os.RemoveAll("app.db"))
+		createDB(t, "app.db", tables+`
+CREATE TABLE c (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+CREATE TABLE d (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p (id));
+INSERT INTO c VALUES (1, 99);
+`+extra)
+	}
+
+	// The violation was there before, and still fails the apply.
+	newDB(t, "")
+	_, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "foreign key violations, rolled back: c (rowid 1) refers to a missing row of p (--skip-foreign-key-check, or -- hazel:skip-foreign-key-check on the table, leaves rows that were there before out of the check)\n")
+	assert.Equal(t, "0", query(t, "app.db", "SELECT count(*) FROM sqlite_schema WHERE name = 's_v'"))
+
+	// --skip-foreign-key-check runs no check.
+	out, _, code := hazel(t, "apply", "--skip-foreign-key-check", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "-- Applied 1 statement\n")
+
+	newDB(t, "")
+	t.Setenv("HAZEL_SKIP_FOREIGN_KEY_CHECK", "true")
+	_, _, code = hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	t.Setenv("HAZEL_SKIP_FOREIGN_KEY_CHECK", "false")
+
+	// The directive leaves c out of the check, and only c.
+	newDB(t, "")
+	_, _, code = hazel(t, "apply", "app.db", "skip_c.sql")
+	assert.Equal(t, 0, code)
+
+	newDB(t, "INSERT INTO d VALUES (1, 98);")
+	_, errOut, code = hazel(t, "apply", "app.db", "skip_c.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "foreign key violations, rolled back: d (rowid 1) refers to a missing row of p")
+	assert.NotContains(t, errOut, "c (rowid 1)")
 }
