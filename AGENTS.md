@@ -43,8 +43,9 @@ make fix   # golangci-lint run --fix (auto-fix lint errors)
 
 ## Project structure
 
-- `catalog/` - Reads the schema objects of a database from `sqlite_schema` and `PRAGMA table_list`
+- `catalog/` - Reads the schema of a database from `sqlite_schema` and the schema PRAGMAs into `model`
 - `db/` - Resolves the DB argument and opens the database
+- `model/` - The schema objects hazel compares (tables, columns, constraints, indexes, views, triggers)
 - `parser/` - Tokenizer, statement splitter and token comparison for schema files
 
 ## Development workflow
