@@ -1,0 +1,22 @@
+# When the table is rebuilt, the copy fills the NULLs of a column made NOT
+# NULL.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age TEXT);
+  INSERT INTO users VALUES (1, NULL, '30'), (2, 'Bob', '40');
+desired: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    -- hazel:backfill 'user-' || id
+    name TEXT NOT NULL,
+    age INTEGER
+  );
+plan: |
+  -- table rebuild: users (NOT NULL of name; type of age)
+  CREATE TABLE new_users (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      age INTEGER
+  );
+  INSERT INTO new_users (id, name, age) SELECT id, coalesce(name, ('user-' || id)), age FROM users;
+  DROP TABLE users;
+  ALTER TABLE new_users RENAME TO users;

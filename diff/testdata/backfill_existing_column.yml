@@ -1,0 +1,13 @@
+# -- hazel:backfill does nothing for a column that is already there and does
+# not become NOT NULL, so it can stay in the file.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, code TEXT NOT NULL);
+desired: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    -- hazel:backfill 'x'
+    name TEXT,
+    -- hazel:backfill 'y'
+    code TEXT NOT NULL
+  );
+plan: ""

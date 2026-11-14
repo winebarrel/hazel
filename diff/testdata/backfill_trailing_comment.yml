@@ -1,0 +1,22 @@
+# A comment after the backfill expression is a note, and is left out of the
+# expression.
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, first TEXT, nick TEXT);
+  INSERT INTO users VALUES (1, 'Ada', NULL);
+desired: |
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    first TEXT,
+    -- hazel:backfill first -- use the first name
+    nick TEXT NOT NULL,
+    -- hazel:backfill 'none' /* no last name yet */ -- a note
+    last TEXT NOT NULL
+  );
+plan: |
+  ALTER TABLE users ADD COLUMN last TEXT;
+  -- backfill: last
+  UPDATE users SET "last" = ('none');
+  ALTER TABLE users ALTER COLUMN "last" SET NOT NULL;
+  -- backfill: nick
+  UPDATE users SET nick = (first) WHERE nick IS NULL;
+  ALTER TABLE users ALTER COLUMN nick SET NOT NULL;

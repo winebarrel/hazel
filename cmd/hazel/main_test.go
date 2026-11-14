@@ -1159,3 +1159,61 @@ func TestPlanAndDiffError(t *testing.T) {
 		assert.Contains(t, errOut, want)
 	}
 }
+
+// -- hazel:backfill fills a column that the plan adds, by ALTER TABLE or by a
+// rebuild.
+func TestApplyBackfill(t *testing.T) {
+	workdir(t, map[string]string{
+		"alter.sql": `CREATE TABLE users (
+  id INTEGER PRIMARY KEY,
+  name TEXT,
+  -- hazel:backfill upper(name)
+  code TEXT NOT NULL DEFAULT 'new'
+);`,
+		"rebuild.sql": `CREATE TABLE users (
+  id INTEGER PRIMARY KEY,
+  name TEXT COLLATE NOCASE,
+  -- hazel:backfill upper(name)
+  code TEXT NOT NULL
+);`,
+	})
+	for _, file := range []string{"alter.sql", "rebuild.sql"} {
+		t.Run(file, func(t *testing.T) {
+			require.NoError(t, os.RemoveAll("app.db"))
+			createDB(t, "app.db", "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'a'), (2, 'b');")
+			_, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", file)
+			require.Equal(t, 0, code, errOut)
+			assert.Equal(t, "1:A,2:B", query(t, "app.db", "SELECT group_concat(id || ':' || code, ',') FROM (SELECT * FROM users ORDER BY id)"))
+			out, _, code := hazel(t, "plan", "app.db", file)
+			assert.Equal(t, 0, code)
+			assert.True(t, strings.HasSuffix(out, "-- No changes\n"), out)
+		})
+	}
+
+	// The existing rows get the backfill, and a row inserted later the
+	// DEFAULT.
+	require.NoError(t, os.RemoveAll("app.db"))
+	createDB(t, "app.db", "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'a');")
+	_, _, code := hazel(t, "apply", "app.db", "alter.sql")
+	require.Equal(t, 0, code)
+	createDB(t, "app.db", "INSERT INTO users (id, name) VALUES (2, 'b');")
+	assert.Equal(t, "1:A,2:new", query(t, "app.db", "SELECT group_concat(id || ':' || code, ',') FROM (SELECT * FROM users ORDER BY id)"))
+}
+
+// An existing column made NOT NULL gets the backfill in its NULLs only, by
+// ALTER TABLE or by a rebuild.
+func TestApplyBackfillSetNotNull(t *testing.T) {
+	workdir(t, map[string]string{
+		"alter.sql":   "CREATE TABLE users (\n  id INTEGER PRIMARY KEY,\n  -- hazel:backfill 'user-' || id\n  name TEXT NOT NULL\n);",
+		"rebuild.sql": "CREATE TABLE users (\n  id INTEGER PRIMARY KEY,\n  -- hazel:backfill 'user-' || id\n  name TEXT NOT NULL COLLATE NOCASE\n);",
+	})
+	for _, file := range []string{"alter.sql", "rebuild.sql"} {
+		t.Run(file, func(t *testing.T) {
+			require.NoError(t, os.RemoveAll("app.db"))
+			createDB(t, "app.db", "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, NULL), (2, 'Bob');")
+			_, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", file)
+			require.Equal(t, 0, code, errOut)
+			assert.Equal(t, "1:user-1,2:Bob", query(t, "app.db", "SELECT group_concat(id || ':' || name, ',') FROM (SELECT * FROM users ORDER BY id)"))
+		})
+	}
+}

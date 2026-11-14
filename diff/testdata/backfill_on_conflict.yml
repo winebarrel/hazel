@@ -1,0 +1,14 @@
+# The ON CONFLICT clause of the NOT NULL goes with SET NOT NULL.
+init: |
+  CREATE TABLE t (a INT);
+desired: |
+  CREATE TABLE t (
+    a INT,
+    -- hazel:backfill a * 2
+    b INT CONSTRAINT b_nn NOT NULL ON CONFLICT REPLACE DEFAULT 0
+  );
+plan: |
+  ALTER TABLE t ADD COLUMN b INT DEFAULT 0;
+  -- backfill: b
+  UPDATE t SET b = (a * 2);
+  ALTER TABLE t ALTER COLUMN b SET NOT NULL ON CONFLICT REPLACE;
