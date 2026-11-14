@@ -1,0 +1,18 @@
+# The current view reads a table the schema files drop, so it does not
+# compile against the desired schema; it is taken as changed.
+init: |
+  CREATE TABLE t (a);
+  CREATE TABLE old_t (a);
+  CREATE VIEW v AS SELECT a FROM old_t;
+desired: |
+  CREATE TABLE t (a);
+  CREATE VIEW v AS SELECT a FROM t;
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   table  old_t
+  --
+  -- drop and create: definition changed
+  DROP VIEW v;
+  -- drop: removed from schema
+  DROP TABLE old_t;
+  CREATE VIEW v AS SELECT a FROM t;
