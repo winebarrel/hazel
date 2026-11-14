@@ -28,11 +28,15 @@ func StartPager(w io.Writer, pager *bool) (io.Writer, func(), error) {
 	if runtime.GOOS == "windows" {
 		cmd = exec.Command("cmd", "/c", cmdline)
 	}
-	r, stdin := io.Pipe()
-	cmd.Stdin = r
 	cmd.Stdout = f
 	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
+	// An io.Pipe would block hazel when the pager quits before reading all
+	// of the output; the pipe of StdinPipe fails the writes instead.
+	stdin, err := cmd.StdinPipe()
+	if err == nil {
+		err = cmd.Start()
+	}
+	if err != nil {
 		return w, noop, fmt.Errorf("failed to start the pager %q: %w", cmdline, err)
 	}
 	var once sync.Once
