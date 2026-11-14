@@ -26,3 +26,10 @@ fix:
 	golangci-lint run --fix
 
 include realworld.mk
+
+# Records demo.gif and demo.webm from demo.tape with vhs
+# (https://github.com/charmbracelet/vhs), which needs ttyd and ffmpeg. The
+# demo pages through bat. The recordings are not committed.
+.PHONY: demo
+demo: build
+	vhs demo.tape
