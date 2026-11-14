@@ -1,0 +1,7 @@
+init: |
+  CREATE TABLE p (a, b, PRIMARY KEY (a, b));
+  CREATE TABLE t (id INTEGER PRIMARY KEY);
+desired: |
+  CREATE TABLE p (a, b, PRIMARY KEY (a, b));
+  CREATE TABLE t (id INTEGER PRIMARY KEY, x, y, FOREIGN KEY (x, y) REFERENCES p (a, b));
+error: "table t: changing a FOREIGN KEY constraint is not supported yet"

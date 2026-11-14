@@ -96,9 +96,27 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 			added = append(added, key)
 		}
 	}
-	// A foreign key on columns being added comes with their definitions.
+	var defs map[string]parser.TableElement
+	if len(added) > 0 {
+		defs = columnDefinitions(des.SQL)
+	}
+	// ADD COLUMN copies the column definition, so a REFERENCES written in the
+	// definition of a column being added comes with it: one foreign key on
+	// that column is left out of the comparison. A table-level FOREIGN KEY
+	// does not come with it, and is compared like any other.
+	exempt := map[string]bool{}
 	desFKs := slices.DeleteFunc(slices.Clone(des.ForeignKeys), func(fk *model.ForeignKey) bool {
-		return !slices.ContainsFunc(fk.Columns, func(c string) bool { return !slices.Contains(added, model.Key(c)) })
+		if len(fk.Columns) != 1 {
+			return false
+		}
+		key := model.Key(fk.Columns[0])
+		if exempt[key] || !slices.Contains(added, key) {
+			return false
+		}
+		exempt[key] = slices.ContainsFunc(defs[key].Tokens, func(t parser.Token) bool {
+			return t.IsKeyword("REFERENCES")
+		})
+		return exempt[key]
 	})
 	switch {
 	case cur.Strict != des.Strict:
@@ -127,23 +145,20 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		}
 	}
 
-	if len(added) > 0 {
-		defs := columnDefinitions(des.SQL)
-		for _, key := range added {
-			d.b.add(alterTables, "", "ALTER TABLE "+q(cur.Name)+" ADD COLUMN "+defs[key])
-		}
+	for _, key := range added {
+		d.b.add(alterTables, "", "ALTER TABLE "+q(cur.Name)+" ADD COLUMN "+defs[key].SQL())
 	}
 	return nil
 }
 
-// columnDefinitions returns the text of each column definition of a CREATE
-// TABLE, keyed by the column's key. SQLite stores a CREATE TABLE ... AS
-// SELECT as a CREATE TABLE with a list of columns, so every table has one.
-func columnDefinitions(sql string) map[string]string {
-	defs := map[string]string{}
+// columnDefinitions returns each column definition of a CREATE TABLE, keyed
+// by the column's key. SQLite stores a CREATE TABLE ... AS SELECT as a CREATE
+// TABLE with a list of columns, so every table has one.
+func columnDefinitions(sql string) map[string]parser.TableElement {
+	defs := map[string]parser.TableElement{}
 	for _, e := range parser.TableElements(statement(sql)) {
 		if e.Column != "" {
-			defs[model.Key(e.Column)] = e.SQL()
+			defs[model.Key(e.Column)] = e
 		}
 	}
 	return defs
