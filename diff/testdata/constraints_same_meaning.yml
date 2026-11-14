@@ -1,0 +1,23 @@
+init: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY);
+  CREATE TABLE t (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    a TEXT COLLATE nocase CONSTRAINT a_positive CHECK (length(a)>0),
+    b AS (length(a)+1),
+    c REFERENCES p (id) NOT DEFERRABLE INITIALLY DEFERRED,
+    d REFERENCES p (id) DEFERRABLE INITIALLY DEFERRED
+  );
+# Constraint names are not compared, a column CHECK equals the same table
+# CHECK, collation names and expressions are compared by their tokens, and
+# NOT DEFERRABLE INITIALLY DEFERRED is as immediate as no clause at all.
+desired: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY);
+  CREATE TABLE t (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    a TEXT COLLATE NOCASE,
+    b AS ( LENGTH( a ) + 1 ),
+    c REFERENCES p (id),
+    d REFERENCES p (id) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT other_name CHECK ( length(a) > 0 )
+  );
+plan: ""

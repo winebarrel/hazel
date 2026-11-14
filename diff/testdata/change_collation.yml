@@ -1,0 +1,5 @@
+init: |
+  CREATE TABLE t (a TEXT);
+desired: |
+  CREATE TABLE t (a TEXT COLLATE NOCASE);
+error: "table t: changing column a is not supported yet"

@@ -48,7 +48,7 @@ make fix   # golangci-lint run --fix (auto-fix lint errors)
 - `diff/` - Computes the plan, the DDL that takes the current schema to the desired one
 - `desired/` - Loads the desired schema: runs the CREATE statements of the schema files in `:memory:` and reads them back with `catalog`
 - `model/` - The schema objects hazel compares (tables, columns, constraints, indexes, views, triggers)
-- `parser/` - Tokenizer, statement splitter, statement classification, CREATE TABLE elements, identifier quoting and token comparison for schema files
+- `parser/` - Tokenizer, statement splitter, statement classification, CREATE TABLE parsing (what PRAGMAs do not report), identifier quoting and token comparison for schema files
 
 ## Development workflow
 

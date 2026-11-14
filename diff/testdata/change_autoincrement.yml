@@ -1,0 +1,5 @@
+init: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY);
+desired: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT);
+error: "table t: changing AUTOINCREMENT is not supported yet"

@@ -34,7 +34,9 @@ type Table struct {
 	Virtual      bool
 	Strict       bool
 	WithoutRowid bool
-	Columns      *orderedmap.Map[string, *Column]
+	// Autoincrement reports whether the PRIMARY KEY has AUTOINCREMENT.
+	Autoincrement bool
+	Columns       *orderedmap.Map[string, *Column]
 	// PrimaryKey lists the columns of the PRIMARY KEY in key order. It is
 	// empty when the table has none. The key of a rowid alias (an INTEGER
 	// PRIMARY KEY) has no index, so its Desc is always false, even when
@@ -45,6 +47,9 @@ type Table struct {
 	ForeignKeys []*ForeignKey
 	// Uniques are the UNIQUE constraints, in the order written.
 	Uniques []*Unique
+	// Checks are the CHECK constraints of the columns and of the table, in
+	// the order written.
+	Checks []*Check
 }
 
 // Generated is how a generated column is stored.
@@ -66,8 +71,13 @@ type Column struct {
 	NotNull bool
 	// Default is the text of the DEFAULT expression, or nil when there is
 	// none.
-	Default   *string
+	Default *string
+	// Collation is the name of the COLLATE, as written, or "".
+	Collation string
 	Generated Generated
+	// GeneratedExpr is the expression of a generated column, as written, or
+	// "".
+	GeneratedExpr string
 }
 
 // IndexColumn is one key of an index, a PRIMARY KEY or a UNIQUE constraint.
@@ -88,6 +98,24 @@ type ForeignKey struct {
 	RefColumns []string
 	OnUpdate   string
 	OnDelete   string
+	// Deferred reports DEFERRABLE INITIALLY DEFERRED.
+	Deferred bool
+	// Name is the CONSTRAINT name, or "".
+	Name string
+	// Column is the column whose definition holds the REFERENCES, or "" for
+	// a table constraint.
+	Column string
+}
+
+// Check is a CHECK constraint.
+type Check struct {
+	// Name is the CONSTRAINT name, or "".
+	Name string
+	// Expr is the expression, as written, without the parentheses around it.
+	Expr string
+	// Column is the column whose definition holds the constraint, or "" for a
+	// table constraint.
+	Column string
 }
 
 // Unique is a UNIQUE constraint.
