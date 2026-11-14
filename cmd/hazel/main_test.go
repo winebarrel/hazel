@@ -848,7 +848,7 @@ CREATE VIEW v AS SELECT name FROM users;
 
 	out, _, code := hazel(t, "dump", "--split", "schema/sub", "-E", "tmp_*", "app.db")
 	assert.Equal(t, 0, code)
-	assert.Equal(t, "-- Database: "+filepath.Join(dir, "app.db")+"\n-- Wrote 2 file(s) to schema/sub\n", out)
+	assert.Equal(t, "-- Database: "+filepath.Join(dir, "app.db")+"\n-- Wrote 2 files to schema/sub\n", out)
 	b, err := os.ReadFile(filepath.Join("schema", "sub", "users.sql"))
 	require.NoError(t, err)
 	assert.Equal(t, "CREATE TABLE users (\n    id INTEGER PRIMARY KEY,\n    name TEXT\n);\n\nCREATE INDEX users_name ON users (name);\n", string(b))
@@ -866,6 +866,10 @@ CREATE VIEW v AS SELECT name FROM users;
 	require.NoError(t, err)
 	assert.Equal(t, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\n\nCREATE INDEX users_name ON users (name);\n", string(b))
 	assert.FileExists(t, filepath.Join("schema", "old.sql"))
+
+	out, _, code = hazel(t, "dump", "--split", "schema", "-I", "users", "app.db")
+	assert.Equal(t, 0, code)
+	assert.True(t, strings.HasSuffix(out, "\n-- Wrote 1 file to schema\n"), out)
 }
 
 func TestDumpSplitErrors(t *testing.T) {

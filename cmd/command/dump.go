@@ -72,6 +72,6 @@ func (cmd *Dump) split(w io.Writer, current *model.Schema, opts dump.Options) er
 			return err
 		}
 	}
-	fmt.Fprintf(w, "-- Wrote %d file(s) to %s\n", len(files), cmd.Split) //nolint:errcheck
+	fmt.Fprintf(w, "-- Wrote %d %s to %s\n", len(files), plural(len(files), "file", "files"), cmd.Split) //nolint:errcheck
 	return nil
 }
