@@ -2,7 +2,7 @@
 
 # Changelog
 
-## [Unreleased]
+## [1.1.0] - 2026-11-15
 
 * The `-- hazel:backfill EXPRESSION` directive on a column fills the rows already in the table with the value of the expression, when the plan adds the column or makes it `NOT NULL`. An added column is filled in every row and a column made `NOT NULL` in the rows where it is NULL, with an `UPDATE` before the `SET NOT NULL`, or by the copy when the table is rebuilt. So a `NOT NULL` column with no `DEFAULT` can be added to a table that has rows, and a column that holds NULLs can be made `NOT NULL`.
 
@@ -32,6 +32,7 @@
 
 * The `hazel` command, with `plan` and `diff`. `plan DB SCHEMA_FILE...` prints the DDL that takes a database to the schema files, and `diff OLD_SCHEMA_FILE NEW_SCHEMA_FILE` the DDL that takes one schema file to another. A plan that rebuilds a table fails with exit status 3 unless `--allow-table-rebuild` is given, `--check` exits with status 2 when there are changes, and `-I` / `-E` select the tables, views and virtual tables by name. Options can also come from environment variables (`HAZEL_*`) and from a YAML file given with `-C`.
 
-[unreleased]: https://github.com/winebarrel/hazel/compare/v1.0.0...HEAD
+[unreleased]: https://github.com/winebarrel/hazel/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/winebarrel/hazel/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/winebarrel/hazel/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/winebarrel/hazel/commits/v0.1.0
