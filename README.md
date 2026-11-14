@@ -12,6 +12,8 @@ Documentation: <https://winebarrel.github.io/hazel/>
 
 The schema files are run in an in-memory database and read back from `sqlite_schema` and the schema PRAGMAs, the same way the target database is read. The two schemas are compared, and the difference becomes `ALTER TABLE` where SQLite supports the change, or a rebuild of the table, which runs only when it is allowed. Expressions and views are compared by the bytecode SQLite compiles them to.
 
+![](https://github.com/user-attachments/assets/d8e09f9f-9189-475e-820f-e2d005791846)
+
 ## Install
 
 ```
