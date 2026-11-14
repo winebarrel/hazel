@@ -6,4 +6,9 @@ init: |
 desired: |
   CREATE TABLE p (id INTEGER PRIMARY KEY);
   CREATE TABLE t (a REFERENCES p (id) NOT NULL DEFERRABLE INITIALLY DEFERRED);
-error: "table t: changing a FOREIGN KEY constraint is not supported yet"
+plan: |
+  -- table rebuild: t (FOREIGN KEY constraint)
+  CREATE TABLE new_t (a REFERENCES p (id) NOT NULL DEFERRABLE INITIALLY DEFERRED);
+  INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

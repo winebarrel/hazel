@@ -10,4 +10,13 @@ desired: |
     user_id INTEGER REFERENCES users (id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   );
-error: "table posts: changing a FOREIGN KEY constraint is not supported yet"
+plan: |
+  -- table rebuild: posts (FOREIGN KEY constraint; adds column user_id)
+  CREATE TABLE new_posts (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER REFERENCES users (id),
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+  INSERT INTO new_posts (id) SELECT id FROM posts;
+  DROP TABLE posts;
+  ALTER TABLE new_posts RENAME TO posts;

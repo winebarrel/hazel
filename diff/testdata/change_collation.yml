@@ -2,4 +2,9 @@ init: |
   CREATE TABLE t (a TEXT);
 desired: |
   CREATE TABLE t (a TEXT COLLATE NOCASE);
-error: "table t: changing column a is not supported yet"
+plan: |
+  -- table rebuild: t (COLLATE of a)
+  CREATE TABLE new_t (a TEXT COLLATE NOCASE);
+  INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

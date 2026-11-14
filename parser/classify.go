@@ -66,24 +66,63 @@ func (s Statement) Line() int {
 // ObjectName returns the name of the object a CREATE statement creates, or ""
 // for any other statement. A schema name before it is left out.
 func (s Statement) ObjectName() string {
-	if s.Classify() == Unsupported {
+	i, _ := s.objectName()
+	if i < 0 {
 		return ""
 	}
-	tokens := s.Significant()
+	return s.Tokens[i].Name()
+}
+
+// WithObjectName returns the SQL of a CREATE statement, from its first
+// significant token, with the object's name, and any schema name before it,
+// replaced by name.
+func (s Statement) WithObjectName(name string) string {
+	i, schema := s.objectName()
+	var b strings.Builder
+	for j, t := range s.Tokens {
+		switch {
+		case b.Len() == 0 && t.IsTrivia():
+		case j == i:
+			b.WriteString(QuoteIdent(name))
+		case j >= schema && j < i:
+			// The schema name and the "." after it.
+		default:
+			b.WriteString(t.Text)
+		}
+	}
+	return b.String()
+}
+
+// objectName returns the index in Tokens of the object's name of a CREATE
+// statement, and of the first token of the schema name before it (equal to
+// the name's index when there is none). It returns -1 for any other
+// statement.
+func (s Statement) objectName() (int, int) {
+	if s.Classify() == Unsupported {
+		return -1, -1
+	}
+	var idx []int // indexes of the significant tokens
+	for j, t := range s.Tokens {
+		if !t.IsTrivia() {
+			idx = append(idx, j)
+		}
+	}
+	tok := func(i int) Token { return s.Tokens[idx[i]] }
 	i := 1
 	// UNIQUE INDEX, VIRTUAL TABLE.
-	for i < len(tokens) && (tokens[i].IsKeyword("UNIQUE") || tokens[i].IsKeyword("VIRTUAL")) {
+	for i < len(idx) && (tok(i).IsKeyword("UNIQUE") || tok(i).IsKeyword("VIRTUAL")) {
 		i++
 	}
 	i++ // TABLE, INDEX, VIEW or TRIGGER
-	if i+2 < len(tokens) && tokens[i].IsKeyword("IF") && tokens[i+1].IsKeyword("NOT") && tokens[i+2].IsKeyword("EXISTS") {
+	if i+2 < len(idx) && tok(i).IsKeyword("IF") && tok(i+1).IsKeyword("NOT") && tok(i+2).IsKeyword("EXISTS") {
 		i += 3
 	}
-	if i+2 < len(tokens) && tokens[i+1].IsPunct(".") {
+	schema := i
+	if i+2 < len(idx) && tok(i+1).IsPunct(".") {
 		i += 2
 	}
-	if i < len(tokens) {
-		return tokens[i].Name()
+	if i >= len(idx) {
+		return -1, -1
 	}
-	return ""
+	return idx[i], idx[schema]
 }

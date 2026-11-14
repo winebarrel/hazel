@@ -2,4 +2,9 @@ init: |
   CREATE TABLE t (a, b);
 desired: |
   CREATE TABLE t (a PRIMARY KEY, b);
-error: "table t: changing the PRIMARY KEY is not supported yet"
+plan: |
+  -- table rebuild: t (PRIMARY KEY)
+  CREATE TABLE new_t (a PRIMARY KEY, b);
+  INSERT INTO new_t (rowid, a, b) SELECT rowid, a, b FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

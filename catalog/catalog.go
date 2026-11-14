@@ -193,6 +193,7 @@ func (r *reader) table(o objectRow) *model.Table {
 	if t.PrimaryKey == nil {
 		for _, name := range pkCols[:nPK] {
 			t.PrimaryKey = append(t.PrimaryKey, &model.IndexColumn{Name: name, Collation: "BINARY"})
+			t.RowidAlias = name
 		}
 	}
 	r.addTableDef(t)
