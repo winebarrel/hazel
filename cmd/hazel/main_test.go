@@ -471,6 +471,61 @@ INSERT INTO settings VALUES ('other', '2');
 	assert.Contains(t, errOut, "failed to evaluate the condition of hazel:execute: SELECT count(*) = 0 FROM new_table")
 }
 
+func TestExecuteConditionNotBoolean(t *testing.T) {
+	for _, tc := range []struct {
+		cond string
+		got  string
+	}{
+		{"SELECT count(*) FROM settings", "2"},
+		{"SELECT NULL", "NULL"},
+		{"SELECT 'yes'", "'yes'"},
+		{"SELECT 1.0", "1.0"},
+		{"SELECT X'01'", "X'01'"},
+		{"SELECT 1e100", "1e+100"},
+		{"SELECT 1 FROM settings WHERE 0", "no rows"},
+	} {
+		t.Run(tc.cond, func(t *testing.T) {
+			workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+-- hazel:execute ` + tc.cond + `
+INSERT INTO settings VALUES ('c', '3');
+`})
+			createDB(t, "app.db", "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT); INSERT INTO settings VALUES ('a', '1'), ('b', '2');")
+			want := "the condition of hazel:execute must return 0 or 1: " + tc.cond + ": got " + tc.got
+
+			_, errOut, code := hazel(t, "plan", "app.db", "schema.sql")
+			assert.Equal(t, 1, code)
+			assert.Contains(t, errOut, want)
+
+			_, errOut, code = hazel(t, "apply", "app.db", "schema.sql")
+			assert.Equal(t, 1, code)
+			assert.Contains(t, errOut, want)
+			assert.Equal(t, "2", query(t, "app.db", "SELECT count(*) FROM settings"))
+		})
+	}
+}
+
+// A condition that plan cannot evaluate is checked again by apply, after
+// the DDL.
+func TestApplyExecuteConditionNotBoolean(t *testing.T) {
+	workdir(t, map[string]string{"schema.sql": `
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE t (a);
+-- hazel:execute SELECT max(a) FROM t
+INSERT INTO settings VALUES ('c', '3');
+`})
+	createDB(t, "app.db", "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);")
+
+	out, _, code := hazel(t, "plan", "app.db", "schema.sql")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "-- check SQL could not be evaluated at plan time: SQL logic error: no such table: t (1); apply will decide\n")
+
+	_, errOut, code := hazel(t, "apply", "app.db", "schema.sql")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "the condition of hazel:execute must return 0 or 1: SELECT max(a) FROM t: got NULL")
+	assert.Equal(t, "0", query(t, "app.db", "SELECT count(*) FROM sqlite_schema WHERE name = 't'"))
+}
+
 func TestApplyRebuild(t *testing.T) {
 	workdir(t, map[string]string{"schema.sql": "CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT);"})
 	createDB(t, "app.db", "CREATE TABLE t (id INTEGER PRIMARY KEY, a INT); INSERT INTO t VALUES (1, 10);")

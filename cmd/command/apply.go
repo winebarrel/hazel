@@ -138,7 +138,9 @@ func (cmd *Apply) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	for _, e := range want.Executes {
 		if e.Condition != "" {
 			ok, err := evaluate(ctx, conn, e.Condition)
-			if err != nil {
+			if _, nb := errors.AsType[*NotBooleanError](err); nb {
+				return err
+			} else if err != nil {
 				return fmt.Errorf("failed to evaluate the condition of hazel:execute: %s: %w", e.Condition, err)
 			}
 			if !ok {
