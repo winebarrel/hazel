@@ -250,6 +250,8 @@ func TestLoadDirectiveErrors(t *testing.T) {
 		{"ignore on a column", "CREATE TABLE t (\n  -- hazel:ignore\n  a\n);", "schema.sql:2: hazel:ignore cannot be written before a column or a table constraint"},
 		{"backfill on a table", "-- hazel:backfill 1\nCREATE TABLE t (a);", "schema.sql:1: hazel:backfill is for a column"},
 		{"backfill without an expression", "CREATE TABLE t (\n  -- hazel:backfill\n  a\n);", "schema.sql:2: hazel:backfill needs an expression"},
+		{"backfill with only a note", "CREATE TABLE t (\n  -- hazel:backfill -- a note\n  a\n);", "schema.sql:2: hazel:backfill needs an expression"},
+		{"backfill with an open string", "CREATE TABLE t (\n  -- hazel:backfill 'abc\n  a\n);", "schema.sql:2: hazel:backfill: unterminated string: '"},
 		{"backfill on a table constraint", "CREATE TABLE t (\n  a,\n  -- hazel:backfill 1\n  CHECK (a > 0)\n);", "schema.sql:3: hazel:backfill cannot be written before a column or a table constraint"},
 		{"backfill on a generated column", "CREATE TABLE t (\n  a,\n  -- hazel:backfill 1\n  g AS (a)\n);", "schema.sql:3: hazel:backfill cannot fill a generated column: g"},
 		{"renamed-from on a constraint", "CREATE TABLE t (\n  a,\n  -- hazel:renamed-from c\n  CHECK (a > 0)\n);", "schema.sql:3: hazel:renamed-from cannot be written before a column or a table constraint"},

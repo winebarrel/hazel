@@ -270,13 +270,17 @@ func (l *loader) readColumns(file, table string, stmt parser.Statement) error {
 				return fmt.Errorf("%s:%d: %s%s cannot be written before a column or a table constraint",
 					file, d.Line, parser.DirectivePrefix, d.Name)
 			case d.Name == parser.Backfill:
-				if d.Arg == "" {
+				expr, err := backfillExpr(d.Arg)
+				if err != nil {
+					return fmt.Errorf("%s:%d: %s%s: %w", file, d.Line, parser.DirectivePrefix, d.Name, err)
+				}
+				if expr == "" {
 					return fmt.Errorf("%s:%d: %s%s needs an expression", file, d.Line, parser.DirectivePrefix, d.Name)
 				}
 				if l.backfill[table] == nil {
 					l.backfill[table] = map[string]backfill{}
 				}
-				l.backfill[table][model.Key(e.Column)] = backfill{expr: d.Arg, file: file, line: d.Line}
+				l.backfill[table][model.Key(e.Column)] = backfill{expr: expr, file: file, line: d.Line}
 				continue
 			}
 			name, ok := parser.ParseName(d.Arg)
@@ -290,6 +294,26 @@ func (l *loader) readColumns(file, table string, stmt parser.Statement) error {
 		}
 	}
 	return nil
+}
+
+// backfillExpr returns the expression of a -- hazel:backfill without the
+// comments and the whitespace at its end. The directive runs to the end of
+// its line, so a note written after the expression would comment out what
+// hazel writes after it, such as the parenthesis that closes it.
+func backfillExpr(arg string) (string, error) {
+	tokens, err := parser.Tokenize(arg)
+	if err != nil {
+		// The argument is one line, so the line the tokenizer names says
+		// nothing; the caller gives the directive's line.
+		if perr, ok := errors.AsType[*parser.Error](err); ok {
+			err = perr.Err
+		}
+		return "", err
+	}
+	for len(tokens) > 0 && tokens[len(tokens)-1].IsTrivia() {
+		tokens = tokens[:len(tokens)-1]
+	}
+	return parser.Statement{Tokens: tokens}.SQL(), nil
 }
 
 // needsName reports a renamed-from whose argument is not one name.
