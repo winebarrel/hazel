@@ -33,10 +33,18 @@ const (
 // renames: the renames are run on a copy of it in memory. An object marked
 // with -- hazel:ignore is not created, changed or dropped.
 //
+// NOT NULL is set and dropped with ALTER COLUMN, a CHECK is added with ADD
+// CHECK, and a named CHECK or FOREIGN KEY is dropped with DROP CONSTRAINT.
+// The plan does not look at the rows: SET NOT NULL and ADD CHECK fail at
+// apply time when existing rows break them, since SQLite checks the rows
+// as it runs them.
+//
 // Definitions are compared with parser.TokensEqual, and constraints by their
-// content, not their names. Changing a column, a PRIMARY KEY, a UNIQUE, a
-// FOREIGN KEY or a CHECK constraint, STRICT, WITHOUT ROWID or AUTOINCREMENT
-// is not supported yet and returns an error.
+// content, not their names. The changes that need a table rebuild are not
+// supported yet and return an error: a column's type, DEFAULT, COLLATE or
+// generated expression, the PRIMARY KEY, a UNIQUE constraint, adding or
+// changing a FOREIGN KEY, dropping an unnamed CHECK or FOREIGN KEY, STRICT,
+// WITHOUT ROWID and AUTOINCREMENT.
 func Diff(current, desired *model.Schema) (*Plan, error) {
 	d := &differ{cur: current, des: desired, dependencies: map[string]string{}, recreatedViews: map[string]bool{}}
 	if err := d.renames(); err != nil {
@@ -131,31 +139,67 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		return unsupported("the PRIMARY KEY")
 	case !uniquesEqual(cur.Uniques, des.Uniques):
 		return unsupported("a UNIQUE constraint")
-	case !foreignKeysEqual(cur.ForeignKeys, desFKs):
+	}
+
+	// A named FOREIGN KEY or CHECK that is gone is dropped with DROP
+	// CONSTRAINT, and a new CHECK is added with ADD CHECK. An unnamed one
+	// cannot be dropped that way, and a FOREIGN KEY cannot be added.
+	dropFKs, addFKs := unmatched(cur.ForeignKeys, desFKs, foreignKeyEqual)
+	dropChecks, addChecks := unmatched(cur.Checks, desChecks, checkEqual)
+	if len(addFKs) > 0 || slices.ContainsFunc(dropFKs, func(fk *model.ForeignKey) bool { return fk.Name == "" }) {
 		return unsupported("a FOREIGN KEY constraint")
-	case !sameElements(cur.Checks, desChecks, checkEqual):
+	}
+	if slices.ContainsFunc(dropChecks, func(c *model.Check) bool { return c.Name == "" }) {
 		return unsupported("a CHECK constraint")
 	}
 
+	var dropColumns, notNull []string
 	for key, c := range cur.Columns.All() {
 		dc, ok := des.Columns.GetOk(key)
-		if !ok {
-			d.b.add(alterTables, removed, "ALTER TABLE "+q(cur.Name)+" DROP COLUMN "+q(c.Name))
-			d.b.dataLoss = append(d.b.dataLoss, "column "+cur.Name+"."+c.Name)
-			d.rechecks = true
-			d.dependencies[model.Key(cur.Name)] = cur.Name + ", which drops a column"
-			continue
-		}
-		if !columnEqual(c, dc) {
+		switch {
+		case !ok:
+			dropColumns = append(dropColumns, c.Name)
+		case !columnEqual(c, dc):
 			return unsupported("column " + dc.Name)
+		case c.NotNull != dc.NotNull:
+			change := "DROP NOT NULL"
+			if dc.NotNull {
+				change = "SET NOT NULL"
+			}
+			notNull = append(notNull, "ALTER COLUMN "+q(c.Name)+" "+change)
 		}
 	}
 
+	// A CHECK or a FOREIGN KEY that uses a column must be dropped before the
+	// column, and a new CHECK may use a new column.
+	alter := "ALTER TABLE " + q(cur.Name) + " "
+	for _, fk := range dropFKs {
+		d.b.add(alterTables, removed, alter+"DROP CONSTRAINT "+q(fk.Name))
+	}
+	for _, c := range dropChecks {
+		d.b.add(alterTables, removed, alter+"DROP CONSTRAINT "+q(c.Name))
+	}
+	for _, name := range dropColumns {
+		d.b.add(alterTables, removed, alter+"DROP COLUMN "+q(name))
+		d.b.dataLoss = append(d.b.dataLoss, "column "+cur.Name+"."+name)
+		d.rechecks = true
+		d.dependencies[model.Key(cur.Name)] = cur.Name + ", which drops a column"
+	}
 	if len(added) > 0 {
 		defs := columnDefinitions(des.SQL)
 		for _, key := range added {
-			d.b.add(alterTables, "", "ALTER TABLE "+q(cur.Name)+" ADD COLUMN "+defs[key].SQL())
+			d.b.add(alterTables, "", alter+"ADD COLUMN "+defs[key].SQL())
 		}
+	}
+	for _, change := range notNull {
+		d.b.add(alterTables, "", alter+change)
+	}
+	for _, c := range addChecks {
+		constraint := ""
+		if c.Name != "" {
+			constraint = "CONSTRAINT " + q(c.Name) + " "
+		}
+		d.b.add(alterTables, "", alter+"ADD "+constraint+"CHECK ("+c.Expr+")")
 	}
 	return nil
 }
@@ -318,9 +362,10 @@ func sqlEqual(a, b string) bool {
 	return parser.TokensEqual(statement(a).Tokens, statement(b).Tokens)
 }
 
+// columnEqual compares two columns except for NOT NULL, which ALTER COLUMN
+// changes.
 func columnEqual(a, b *model.Column) bool {
 	return sqlEqual(a.Type, b.Type) &&
-		a.NotNull == b.NotNull &&
 		ptrEqual(a.Default, b.Default) &&
 		parser.EqualFold(collation(a), collation(b)) &&
 		a.Generated == b.Generated &&
@@ -360,27 +405,26 @@ func uniquesEqual(a, b []*model.Unique) bool {
 	return sameElements(a, b, func(x, y *model.Unique) bool { return indexColumnsEqual(x.Columns, y.Columns) })
 }
 
-// foreignKeysEqual compares the FOREIGN KEY constraints regardless of their
-// order.
-func foreignKeysEqual(a, b []*model.ForeignKey) bool {
-	return sameElements(a, b, foreignKeyEqual)
-}
-
 // sameElements reports whether a and b hold the same elements, each as many
 // times, in any order.
 func sameElements[T any](a, b []T, eq func(T, T) bool) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	rest := slices.Clone(b)
+	aOnly, bOnly := unmatched(a, b, eq)
+	return len(aOnly) == 0 && len(bOnly) == 0
+}
+
+// unmatched pairs up the elements of a and b that are equal, in any order,
+// and returns those of each that are left.
+func unmatched[T any](a, b []T, eq func(T, T) bool) (aOnly, bOnly []T) {
+	bOnly = slices.Clone(b)
 	for _, x := range a {
-		i := slices.IndexFunc(rest, func(y T) bool { return eq(x, y) })
+		i := slices.IndexFunc(bOnly, func(y T) bool { return eq(x, y) })
 		if i < 0 {
-			return false
+			aOnly = append(aOnly, x)
+			continue
 		}
-		rest = slices.Delete(rest, i, i+1)
+		bOnly = slices.Delete(bOnly, i, i+1)
 	}
-	return true
+	return aOnly, bOnly
 }
 
 func foreignKeyEqual(a, b *model.ForeignKey) bool {

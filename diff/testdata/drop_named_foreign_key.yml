@@ -1,0 +1,14 @@
+init: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY);
+  CREATE TABLE t (
+    a CONSTRAINT fk_a REFERENCES p (id),
+    b,
+    CONSTRAINT fk_b FOREIGN KEY (b) REFERENCES p (id)
+  );
+desired: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY);
+  CREATE TABLE t (a, b);
+plan: |
+  -- drop: removed from schema
+  ALTER TABLE t DROP CONSTRAINT fk_a;
+  ALTER TABLE t DROP CONSTRAINT fk_b;
