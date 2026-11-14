@@ -51,12 +51,14 @@ func (p *pagerWriter) Write(b []byte) (int, error) {
 		// An io.Pipe would block hazel when the pager quits before reading
 		// all of the output; the pipe of StdinPipe fails the writes instead.
 		stdin, err := p.cmd.StdinPipe()
-		if err == nil {
-			err = p.cmd.Start()
+		if err != nil {
+			return p.out.Write(b)
 		}
-		if err == nil {
-			p.out, p.stdin = stdin, stdin
+		if err := p.cmd.Start(); err != nil {
+			stdin.Close() //nolint:errcheck
+			return p.out.Write(b)
 		}
+		p.out, p.stdin = stdin, stdin
 	}
 	return p.out.Write(b)
 }
