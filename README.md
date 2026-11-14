@@ -20,7 +20,7 @@ The schema files are run in an in-memory database and read back from `sqlite_sch
 brew install winebarrel/hazel/hazel
 ```
 
-Release binaries and Linux packages are on the [releases](https://github.com/winebarrel/hazel/releases) page, and `go install github.com/winebarrel/hazel/cmd/hazel@latest` works too. See [Installation](https://winebarrel.github.io/hazel/installation/).
+Release binaries and Linux packages are on the [releases](https://github.com/winebarrel/hazel/releases) page. See [Installation](https://winebarrel.github.io/hazel/installation/).
 
 ## Quick start
 
