@@ -1,0 +1,18 @@
+# A name in single quotes is kept as it is written: triggers and virtual
+# tables are compared by tokens, where 'tr' and tr differ.
+init: |
+  CREATE TABLE 'sq' ('a' INTEGER PRIMARY KEY, 'b' TEXT COLLATE NOCASE);
+  CREATE INDEX 'ix' ON 'sq' ('b');
+  CREATE TRIGGER 'tr' AFTER INSERT ON 'sq' BEGIN SELECT 1; END;
+  CREATE VIRTUAL TABLE 'docs' USING fts5(title);
+dump: |
+  CREATE TABLE 'sq' (
+      'a' INTEGER PRIMARY KEY,
+      'b' TEXT COLLATE NOCASE
+  );
+
+  CREATE INDEX 'ix' ON 'sq' ('b');
+
+  CREATE TRIGGER 'tr' AFTER INSERT ON 'sq' BEGIN SELECT 1; END;
+
+  CREATE VIRTUAL TABLE 'docs' USING fts5(title);

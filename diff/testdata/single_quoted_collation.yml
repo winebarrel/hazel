@@ -1,0 +1,13 @@
+init: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, 'b' TEXT COLLATE NOCASE);
+desired: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY, 'b' TEXT COLLATE BINARY);
+plan: |
+  -- table rebuild: t (COLLATE of b)
+  CREATE TABLE new_t (
+      id INTEGER PRIMARY KEY,
+      'b' TEXT COLLATE BINARY
+  );
+  INSERT INTO new_t (id, b) SELECT id, b FROM t;
+  DROP TABLE t;
+  ALTER TABLE new_t RENAME TO t;

@@ -1,0 +1,6 @@
+init: |
+  CREATE TABLE 'sq' (a INT);
+desired: |
+  -- hazel:ignore
+  CREATE TABLE 'sq' (a INT, b INT);
+plan: ""

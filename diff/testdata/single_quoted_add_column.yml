@@ -1,0 +1,8 @@
+# SQLite takes a string where a name is expected as that name, so 'b' is a
+# column named b.
+init: |
+  CREATE TABLE 'sq' ('a' INTEGER PRIMARY KEY);
+desired: |
+  CREATE TABLE 'sq' ('a' INTEGER PRIMARY KEY, 'b' TEXT);
+plan: |
+  ALTER TABLE sq ADD COLUMN 'b' TEXT;

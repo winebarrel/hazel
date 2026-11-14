@@ -85,7 +85,7 @@ func ParseName(s string) (string, bool) {
 		return "", false
 	}
 	tokens = significant(tokens)
-	if len(tokens) != 1 || (tokens[0].Kind != Ident && tokens[0].Kind != QuotedIdent) {
+	if len(tokens) != 1 || tokens[0].Name() == "" {
 		return "", false
 	}
 	return tokens[0].Name(), true

@@ -54,20 +54,25 @@ func (t Token) IsPunct(p string) bool {
 }
 
 // Name returns the identifier that the token names: the text of an Ident, or
-// the text of a QuotedIdent without its quotes. It returns "" for any other
-// kind.
+// the text of a QuotedIdent or a String without its quotes. It returns "" for
+// any other kind.
+//
+// A String counts because SQLite takes a string where a name is expected as
+// that name (the nm rule of parse.y), so CREATE TABLE 'sq' creates a table
+// named sq. Name is for a token in such a position; in an expression, a
+// String is a string.
 func (t Token) Name() string {
 	switch t.Kind {
 	case Ident:
 		return t.Text
-	case QuotedIdent:
+	case QuotedIdent, String:
 		return dequote(t.Text)
 	}
 	return ""
 }
 
-// dequote removes the quotes of a quoted identifier. Inside double quotes
-// and backquotes, a doubled quote stands for one; brackets have no escape.
+// dequote removes the quotes of a quoted identifier or a string. Inside
+// quotes, a doubled quote stands for one; brackets have no escape.
 func dequote(s string) string {
 	inner := s[1 : len(s)-1]
 	switch s[0] {
@@ -75,6 +80,8 @@ func dequote(s string) string {
 		return inner
 	case '`':
 		return strings.ReplaceAll(inner, "``", "`")
+	case '\'':
+		return strings.ReplaceAll(inner, "''", "'")
 	}
 	return strings.ReplaceAll(inner, `""`, `"`)
 }
