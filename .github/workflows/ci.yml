@@ -68,4 +68,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go vet ./...
-      - run: go test -v ./...
+      - run: go test -v -coverprofile=coverage.txt ./...
+      - uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.txt
+          flags: ${{ matrix.os }}
