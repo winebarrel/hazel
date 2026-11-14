@@ -49,6 +49,7 @@ make fix   # golangci-lint run --fix (auto-fix lint errors)
 - `catalog/` - Reads the schema of a database from `sqlite_schema` and the schema PRAGMAs into `model`
 - `db/` - Resolves the DB argument and opens the database
 - `dump/` - Writes a schema as the CREATE statements that make it, for `hazel dump`
+- `docs/` - The documentation site, built with MkDocs (`mkdocs.yml`) and published to GitHub Pages on a push to main
 - `diff/` - Computes the plan, the DDL that takes the current schema to the desired one
 - `desired/` - Loads the desired schema: runs the CREATE statements of the schema files in `:memory:` and reads them back with `catalog`
 - `format/` - Lays out a CREATE statement, moving only the whitespace and the quotes of names that do not need them, and a schema file for `hazel fmt`
