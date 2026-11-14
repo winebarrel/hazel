@@ -29,6 +29,7 @@ Only the `main` schema is managed. The temp schema, attached databases, extensio
 
 ## Where to go next
 
+- [Getting started](getting-started.md) takes an existing database under hazel's management.
 - [Commands](reference/commands/index.md) describes `plan`, `apply`, `dump`, `fmt` and `diff`.
 - [Schema objects](reference/objects.md) lists what hazel manages and how each change is made.
 - [Directives](reference/directives.md) describes the `-- hazel:` comments in schema files.

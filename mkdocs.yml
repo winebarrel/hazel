@@ -39,6 +39,9 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - guides/renaming.md
   - Reference:
       - Commands:
           - reference/commands/index.md
