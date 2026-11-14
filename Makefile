@@ -1,5 +1,13 @@
 .PHONY: all
-all: vet test
+all: vet test build
+
+.PHONY: build
+build:
+	go build ./cmd/hazel
+
+.PHONY: install
+install:
+	go install ./cmd/hazel
 
 .PHONY: vet
 vet:

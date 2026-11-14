@@ -26,7 +26,8 @@ import (
 // to, or fail.
 func (d *differ) rebuild(cur, des *model.Table, changes []string) {
 	tmp := d.tempName(des.Name)
-	comment := "table rebuild: " + des.Name + " (" + strings.Join(changes, "; ") + ")"
+	r := Rebuild{Table: des.Name, Changes: changes}
+	comment := "table rebuild: " + r.String()
 	add := func(stmt string) { d.b.add(rebuildTables, comment, stmt) }
 
 	add(statement(des.SQL).WithObjectName(tmp))
@@ -63,7 +64,7 @@ func (d *differ) rebuild(cur, des *model.Table, changes []string) {
 			d.b.dataLoss = append(d.b.dataLoss, "column "+cur.Name+"."+c.Name)
 		}
 	}
-	d.b.rebuilds = append(d.b.rebuilds, des.Name)
+	d.b.rebuilds = append(d.b.rebuilds, r)
 	key := model.Key(des.Name)
 	d.rebuilt[key] = true
 	d.rechecks = true

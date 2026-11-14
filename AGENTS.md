@@ -33,16 +33,19 @@ Do not coddle the user. Assume they know SQLite and their own schema.
 ## Build & test
 
 ```sh
+make build # go build ./cmd/hazel (outputs ./hazel at the repo root)
 make vet   # go vet ./...
 make test  # go test -v ./... $(TEST_OPTS)
 make lint  # golangci-lint run
 make fix   # golangci-lint run --fix (auto-fix lint errors)
 ```
 
-- The tests need no database server. CI runs them on Linux, macOS and Windows.
+- The tests need no database server. CI runs them on Linux, macOS and Windows, with `-coverpkg=./...`, since the CLI tests in `cmd/hazel` cover `cmd/command`.
 
 ## Project structure
 
+- `cmd/hazel/` - CLI entrypoint, and the CLI tests
+- `cmd/command/` - CLI command implementations, the -I/-E filter and the YAML config loader
 - `catalog/` - Reads the schema of a database from `sqlite_schema` and the schema PRAGMAs into `model`
 - `db/` - Resolves the DB argument and opens the database
 - `diff/` - Computes the plan, the DDL that takes the current schema to the desired one
