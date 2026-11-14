@@ -1,0 +1,11 @@
+# Triggers and virtual tables are compared by tokens, and dump writes a name
+# in single quotes as it is, so the dump plans clean.
+init: |
+  CREATE TABLE t (a INT);
+  CREATE TRIGGER 'tr' AFTER INSERT ON 't' BEGIN SELECT 1; END;
+  CREATE VIRTUAL TABLE 'docs' USING fts5(title);
+desired: |
+  CREATE TABLE t (a INT);
+  CREATE TRIGGER 'tr' AFTER INSERT ON 't' BEGIN SELECT 1; END;
+  CREATE VIRTUAL TABLE 'docs' USING fts5(title);
+plan: ""

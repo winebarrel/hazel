@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+* A name written in single quotes where SQLite expects a name, such as `CREATE TABLE 'sq' ('b' TEXT)`, is read as that name. Before, a column so written was added with an empty `ADD COLUMN`, a change to its `COLLATE` was missed, and `-- hazel:ignore` and `-- hazel:renamed-from` on a table so written had no effect. `dump` and the CREATE statements hazel runs keep such a name as it is written.
+
 * The output goes through the command in `HAZEL_PAGER`, run with `sh -c` (`cmd /c` on Windows), when it goes to a terminal. `--pager` uses the pager for any output, and `--no-pager` never does; without `HAZEL_PAGER`, neither does anything. The pager starts on the first output, so a command that prints nothing, or fails before it prints, does not open it.
 
 * `plan`, `apply` and `diff` write the CREATE statements they run in the layout of `dump`: a CREATE TABLE has one column or constraint per line, and names lose the quotes they do not need. The statements are kept that way in the database.

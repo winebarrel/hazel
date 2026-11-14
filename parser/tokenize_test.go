@@ -163,7 +163,10 @@ func TestTokenName(t *testing.T) {
 		{`"a""b"`, `a"b`},
 		{"[a b]", "a b"},
 		{"`a``b`", "a`b"},
-		{"'abc'", ""},
+		// SQLite takes a string where a name is expected as that name.
+		{"'abc'", "abc"},
+		{"'it''s'", "it's"},
+		{"12", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.src, func(t *testing.T) {

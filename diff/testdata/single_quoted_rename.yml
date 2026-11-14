@@ -1,0 +1,11 @@
+init: |
+  CREATE TABLE old (a INT);
+desired: |
+  -- hazel:renamed-from 'old'
+  CREATE TABLE 'sq' (
+    -- hazel:renamed-from 'a'
+    'b' INT
+  );
+plan: |
+  ALTER TABLE old RENAME TO sq;
+  ALTER TABLE sq RENAME COLUMN a TO b;

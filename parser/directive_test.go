@@ -86,7 +86,7 @@ func TestParseName(t *testing.T) {
 		{` "Old Name" `, "Old Name", true},
 		{"[a b]", "a b", true},
 		{"a b", "", false},
-		{"'a'", "", false},
+		{"'a'", "a", true},
 		{"", "", false},
 		{`"open`, "", false},
 	} {
@@ -124,6 +124,7 @@ func TestObjectName(t *testing.T) {
 		{"CREATE UNIQUE INDEX IF NOT EXISTS i ON t (a)", "i"},
 		{"CREATE VIEW main.v AS SELECT 1", "v"},
 		{"CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END", "tr"},
+		{"CREATE TABLE 'sq' (a)", "sq"},
 		{"INSERT INTO t VALUES (1)", ""},
 	}
 	for _, tt := range tests {
