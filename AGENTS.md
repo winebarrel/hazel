@@ -43,6 +43,8 @@ make fix   # golangci-lint run --fix (auto-fix lint errors)
 
 ## Project structure
 
+- `catalog/` - Reads the schema objects of a database from `sqlite_schema` and `PRAGMA table_list`
+- `db/` - Resolves the DB argument and opens the database
 - `parser/` - Tokenizer, statement splitter and token comparison for schema files
 
 ## Development workflow
