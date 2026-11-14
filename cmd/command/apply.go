@@ -209,6 +209,7 @@ func foreignKeyCheck(ctx context.Context, conn *sql.Conn, want *model.Schema) er
 // means for the statements whose SQLite message does not say it: SET NOT NULL
 // and ADD CHECK fail on existing rows with a bare "constraint failed".
 func statementError(stmt string, err error) error {
+	text := strings.TrimSuffix(stmt, ";")
 	tokens, _ := parser.Tokenize(stmt)
 	t := parser.Statement{Tokens: tokens}.Significant()
 	if n := len(t); n > 0 && t[n-1].IsPunct(";") {
@@ -224,12 +225,12 @@ func statementError(stmt string, err error) error {
 			if column.IsKeyword("COLUMN") {
 				column = rest[2]
 			}
-			return fmt.Errorf("%s: existing rows in %s have NULL in %s: %w", strings.TrimSuffix(stmt, ";"), table, column.Name(), err)
+			return fmt.Errorf("%s: existing rows in %s have NULL in %s: %w", text, table, column.Name(), err)
 		case rest[0].IsKeyword("ADD") && rest[1].IsKeyword("CONSTRAINT"):
-			return fmt.Errorf("%s: existing rows in %s violate %s: %w", strings.TrimSuffix(stmt, ";"), table, rest[2].Name(), err)
+			return fmt.Errorf("%s: existing rows in %s violate %s: %w", text, table, rest[2].Name(), err)
 		case rest[0].IsKeyword("ADD") && rest[1].IsKeyword("CHECK"):
-			return fmt.Errorf("%s: existing rows in %s violate the CHECK constraint: %w", strings.TrimSuffix(stmt, ";"), table, err)
+			return fmt.Errorf("%s: existing rows in %s violate the CHECK constraint: %w", text, table, err)
 		}
 	}
-	return fmt.Errorf("%s: %w", strings.TrimSuffix(stmt, ";"), err)
+	return fmt.Errorf("%s: %w", text, err)
 }

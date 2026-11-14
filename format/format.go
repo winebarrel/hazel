@@ -26,10 +26,7 @@ func Statement(sql string) string {
 	}
 	f := &formatter{tokens: tokens, text: make([]string, len(tokens))}
 	for i, t := range tokens {
-		f.text[i] = t.Text
-		if t.Kind == parser.Comment && strings.HasPrefix(t.Text, "--") {
-			f.text[i] = strings.TrimRight(t.Text, " \t\r")
-		}
+		f.text[i] = comment(t)
 	}
 	f.unquote()
 	stmt := parser.Statement{Tokens: tokens}

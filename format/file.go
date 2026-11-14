@@ -78,13 +78,8 @@ func comment(t parser.Token) string {
 
 // statement returns one statement, from its first significant token.
 func statement(s parser.Statement, tokens []parser.Token) string {
-	text := func(tokens []parser.Token) string {
-		var b strings.Builder
-		for _, t := range tokens {
-			b.WriteString(t.Text)
-		}
-		return b.String()
-	}
+	// tokens start at a significant token, so SQL gives them whole.
+	text := func(tokens []parser.Token) string { return parser.Statement{Tokens: tokens}.SQL() }
 	ds, _ := s.Directives()
 	execute := slices.ContainsFunc(ds, func(d parser.Directive) bool { return d.Name == parser.Execute })
 	if s.Classify() == parser.Unsupported || execute {

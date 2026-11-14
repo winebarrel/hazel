@@ -45,7 +45,7 @@ func (cmd *Dump) Run(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
-	opts := dump.Options{NoFormat: cmd.NoFormat, Exclude: func(name string) bool { return !cmd.selects(name) }}
+	opts := dump.Options{NoFormat: cmd.NoFormat, Exclude: cmd.excludes}
 	fmt.Fprintln(w, databaseLine(target, true)) //nolint:errcheck
 	if cmd.Split != "" {
 		return cmd.split(w, current, opts)

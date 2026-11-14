@@ -22,20 +22,24 @@ type exited int
 func hazel(t *testing.T, args ...string) (string, string, int) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := 0
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				e, ok := r.(exited)
-				if !ok {
-					panic(r)
-				}
-				code = int(e)
-			}
-		}()
-		run(args, &stdout, &stderr, func(c int) { panic(exited(c)) })
-	}()
+	code := runCLI(args, &stdout, &stderr)
 	return stdout.String(), stderr.String(), code
+}
+
+// runCLI runs the command and returns its exit status. exit panics with the
+// status, which is recovered here.
+func runCLI(args []string, stdout, stderr io.Writer) (code int) {
+	defer func() {
+		if r := recover(); r != nil {
+			e, ok := r.(exited)
+			if !ok {
+				panic(r)
+			}
+			code = int(e)
+		}
+	}()
+	run(args, stdout, stderr, func(c int) { panic(exited(c)) })
+	return 0
 }
 
 // workdir changes to a new directory with the files written in it.
@@ -999,19 +1003,7 @@ func hazelToFile(t *testing.T, args ...string) (string, int) {
 	f, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
 	require.NoError(t, err)
 	defer f.Close()
-	code := 0
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				e, ok := r.(exited)
-				if !ok {
-					panic(r)
-				}
-				code = int(e)
-			}
-		}()
-		run(args, f, io.Discard, func(c int) { panic(exited(c)) })
-	}()
+	code := runCLI(args, f, io.Discard)
 	b, err := os.ReadFile(f.Name())
 	require.NoError(t, err)
 	return string(b), code
