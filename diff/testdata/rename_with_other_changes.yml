@@ -1,0 +1,20 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, legacy TEXT);
+# The rename runs first, and the rest is compared against the renamed table.
+desired: |
+  -- hazel:renamed-from users
+  CREATE TABLE members (
+    id INTEGER PRIMARY KEY,
+    -- hazel:renamed-from name
+    "display name" TEXT,
+    email TEXT
+  );
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   column members.legacy
+  --
+  ALTER TABLE users RENAME TO members;
+  ALTER TABLE members RENAME COLUMN name TO "display name";
+  -- drop: removed from schema
+  ALTER TABLE members DROP COLUMN legacy;
+  ALTER TABLE members ADD COLUMN email TEXT;

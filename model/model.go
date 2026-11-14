@@ -36,7 +36,13 @@ type Table struct {
 	WithoutRowid bool
 	// Autoincrement reports whether the PRIMARY KEY has AUTOINCREMENT.
 	Autoincrement bool
-	Columns       *orderedmap.Map[string, *Column]
+	// RenamedFrom is the old name given by a -- hazel:renamed-from
+	// directive, or "". It is set on the desired side only.
+	RenamedFrom string
+	// Ignored reports a -- hazel:ignore directive: the table is not
+	// created, changed or dropped. It is set on the desired side only.
+	Ignored bool
+	Columns *orderedmap.Map[string, *Column]
 	// PrimaryKey lists the columns of the PRIMARY KEY in key order. It is
 	// empty when the table has none. The key of a rowid alias (an INTEGER
 	// PRIMARY KEY) has no index, so its Desc is always false, even when
@@ -79,6 +85,9 @@ type Column struct {
 	// GeneratedExpr is the expression of a generated column, as written, or
 	// "".
 	GeneratedExpr string
+	// RenamedFrom is the old name given by a -- hazel:renamed-from
+	// directive, or "". It is set on the desired side only.
+	RenamedFrom string
 }
 
 // IndexColumn is one key of an index, a PRIMARY KEY or a UNIQUE constraint.
@@ -133,6 +142,9 @@ type Index struct {
 	Unique  bool
 	Partial bool
 	Columns []*IndexColumn
+	// Ignored reports a -- hazel:ignore directive. It is set on the desired
+	// side only.
+	Ignored bool
 }
 
 // View is a view.
@@ -141,6 +153,9 @@ type View struct {
 	SQL  string
 	// Columns lists the names of the result columns.
 	Columns []string
+	// Ignored reports a -- hazel:ignore directive. It is set on the desired
+	// side only.
+	Ignored bool
 }
 
 // Trigger is a trigger.
@@ -148,6 +163,9 @@ type Trigger struct {
 	Name  string
 	Table string
 	SQL   string
+	// Ignored reports a -- hazel:ignore directive. It is set on the desired
+	// side only.
+	Ignored bool
 }
 
 // Key returns the name with ASCII letters in lowercase. SQLite compares names

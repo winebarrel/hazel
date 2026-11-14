@@ -84,6 +84,7 @@ type item struct {
 const (
 	dropViewsAndTriggers = iota
 	dropIndexes
+	renameTables
 	alterTables
 	dropTables
 	createTables

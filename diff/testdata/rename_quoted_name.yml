@@ -1,0 +1,13 @@
+init: |
+  CREATE TABLE "Old Name" (id INTEGER PRIMARY KEY, "old col" TEXT);
+# The old name is read as SQL writes a name, quotes and all.
+desired: |
+  -- hazel:renamed-from "Old Name"
+  CREATE TABLE new_name (
+    id INTEGER PRIMARY KEY,
+    -- hazel:renamed-from [old col]
+    new_col TEXT
+  );
+plan: |
+  ALTER TABLE "Old Name" RENAME TO new_name;
+  ALTER TABLE new_name RENAME COLUMN "old col" TO new_col;

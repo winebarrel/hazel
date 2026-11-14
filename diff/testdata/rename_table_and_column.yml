@@ -1,0 +1,24 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+  CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users (id));
+  CREATE VIEW user_names AS SELECT id, name FROM users;
+  CREATE INDEX users_name ON users (name);
+  CREATE TABLE log (x);
+  CREATE TRIGGER users_ai AFTER INSERT ON users BEGIN INSERT INTO log VALUES (new.name); END;
+# SQLite rewrites the foreign key of posts, the view, the index and the
+# trigger as it renames, so nothing else changes.
+desired: |
+  -- hazel:renamed-from users
+  CREATE TABLE members (
+    id INTEGER PRIMARY KEY,
+    -- hazel:renamed-from name
+    display_name TEXT
+  );
+  CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES members (id));
+  CREATE VIEW user_names AS SELECT id, display_name FROM members;
+  CREATE INDEX users_name ON members (display_name);
+  CREATE TABLE log (x);
+  CREATE TRIGGER users_ai AFTER INSERT ON members BEGIN INSERT INTO log VALUES (new.display_name); END;
+plan: |
+  ALTER TABLE users RENAME TO members;
+  ALTER TABLE members RENAME COLUMN name TO display_name;

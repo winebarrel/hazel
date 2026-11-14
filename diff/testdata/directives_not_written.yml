@@ -1,0 +1,16 @@
+init: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY);
+# The directives are not part of the DDL hazel writes.
+desired: |
+  CREATE TABLE t (id INTEGER PRIMARY KEY);
+  -- hazel:renamed-from old_posts
+  CREATE TABLE posts (
+    id INTEGER PRIMARY KEY, -- the key
+    -- hazel:renamed-from old_title
+    title TEXT
+  );
+plan: |
+  CREATE TABLE posts (
+    id INTEGER PRIMARY KEY, -- the key
+    title TEXT
+  );

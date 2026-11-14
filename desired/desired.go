@@ -62,52 +62,215 @@ func (s statement) errorf(err error) error {
 	return fmt.Errorf("%s:%d: %w", s.file, s.stmt.Line(), err)
 }
 
+// Result is the desired schema loaded from schema files.
+type Result struct {
+	Schema *model.Schema
+	// Warnings report the statements that were ignored.
+	Warnings []Warning
+	// Executes are the statements marked with -- hazel:execute, in the order
+	// written. They are not run here.
+	Executes []Execute
+}
+
+// Execute is a statement marked with -- hazel:execute, to run after the DDL.
+type Execute struct {
+	File string
+	Line int
+	SQL  string
+	// Condition is the SQL given after the directive, or "". The statement
+	// runs only when it gives a true value.
+	Condition string
+}
+
 // Load executes the CREATE statements of the sources in an in-memory
 // database and reads the schema back, so that SQLite validates it. Any other
-// statement is not executed; it is reported as a warning.
+// statement is not executed; it is reported as a warning, or kept as an
+// Execute when it is marked with -- hazel:execute.
 //
 // The statements run in the order tables (virtual tables included), indexes,
 // views and triggers, so the order they are written in does not matter.
 // SQLite does not check what a view reads when it creates the view, so views
 // need no order among themselves; a view that reads a missing table fails
 // when its columns are read.
-func Load(ctx context.Context, srcs []Source) (*model.Schema, []Warning, error) {
-	var warnings []Warning
-	phases := make([][]statement, triggerPhase+1)
+//
+// The directives are read from the comments before a statement or a column
+// definition, and are removed from the SQL that runs, so that the schema
+// read back does not hold them. A statement marked with -- hazel:ignore
+// runs like any other, so that what depends on it can be created, and is
+// marked Ignored in the schema.
+func Load(ctx context.Context, srcs []Source) (*Result, error) {
+	l := &loader{
+		result:       &Result{},
+		phases:       make([][]statement, triggerPhase+1),
+		ignored:      map[parser.StatementKind]map[string]bool{},
+		tableRename:  map[string]string{},
+		columnRename: map[string]map[string]string{},
+	}
 	for _, src := range srcs {
-		tokens, err := parser.Tokenize(src.Body)
-		if err != nil {
-			// Tokenize returns a *parser.Error, which carries the line.
-			var perr *parser.Error
-			errors.As(err, &perr)
-			return nil, nil, fmt.Errorf("%s:%d: %w", src.Name, perr.Line, perr.Err)
-		}
-		for _, stmt := range parser.Split(tokens) {
-			if stmt.IsEmpty() {
-				continue
-			}
-			phase, ok := phaseOf[stmt.Classify()]
-			if !ok {
-				warnings = append(warnings, Warning{File: src.Name, Line: stmt.Line(), SQL: stmt.SQL()})
-				continue
-			}
-			phases[phase] = append(phases[phase], statement{file: src.Name, stmt: stmt})
+		if err := l.read(src); err != nil {
+			return nil, err
 		}
 	}
 
 	conn, err := db.OpenReadWrite(db.Memory, 0)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer conn.Close() //nolint:errcheck
-	if err := execAll(ctx, conn, phases); err != nil {
-		return nil, nil, err
+	if err := execAll(ctx, conn, l.phases); err != nil {
+		return nil, err
 	}
 	schema, err := catalog.Read(ctx, conn)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return schema, warnings, nil
+	l.mark(schema)
+	l.result.Schema = schema
+	return l.result, nil
+}
+
+type loader struct {
+	result *Result
+	phases [][]statement
+	// ignored holds the keys of the objects marked with -- hazel:ignore, by
+	// the kind of their statement.
+	ignored map[parser.StatementKind]map[string]bool
+	// tableRename maps a table's key to its old name.
+	tableRename map[string]string
+	// columnRename maps a table's key and a column's key to the column's old
+	// name.
+	columnRename map[string]map[string]string
+}
+
+func (l *loader) read(src Source) error {
+	tokens, err := parser.Tokenize(src.Body)
+	if err != nil {
+		return located(src.Name, err)
+	}
+	for _, stmt := range parser.Split(tokens) {
+		if stmt.IsEmpty() {
+			continue
+		}
+		if err := l.readStatement(src.Name, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// located reports err, a *parser.Error, as file:line.
+func located(file string, err error) error {
+	var perr *parser.Error
+	errors.As(err, &perr)
+	return fmt.Errorf("%s:%d: %w", file, perr.Line, perr.Err)
+}
+
+func (l *loader) readStatement(file string, stmt parser.Statement) error {
+	ds, err := stmt.Directives()
+	if err != nil {
+		return located(file, err)
+	}
+	kind := stmt.Classify()
+	key := model.Key(stmt.ObjectName())
+	misplaced := func(d parser.Directive, what string) error {
+		return fmt.Errorf("%s:%d: %s%s is for %s", file, d.Line, parser.DirectivePrefix, d.Name, what)
+	}
+	execute := false
+	for _, d := range ds {
+		switch d.Name {
+		case parser.Execute:
+			if kind != parser.Unsupported {
+				return misplaced(d, "a statement that hazel does not manage")
+			}
+			l.result.Executes = append(l.result.Executes,
+				Execute{File: file, Line: stmt.Line(), SQL: stmt.WithoutDirectives(), Condition: d.Arg})
+			execute = true
+		case parser.Ignore:
+			if kind == parser.Unsupported {
+				return misplaced(d, "a table, an index, a view or a trigger")
+			}
+			if l.ignored[kind] == nil {
+				l.ignored[kind] = map[string]bool{}
+			}
+			l.ignored[kind][key] = true
+		case parser.RenamedFrom:
+			if kind != parser.CreateTable {
+				return misplaced(d, "a table or a column")
+			}
+			name, ok := parser.ParseName(d.Arg)
+			if !ok {
+				return needsName(file, d)
+			}
+			l.tableRename[key] = name
+		}
+	}
+	if kind == parser.CreateTable {
+		if err := l.readColumns(file, key, stmt); err != nil {
+			return err
+		}
+	}
+
+	phase, ok := phaseOf[kind]
+	if !ok {
+		if !execute {
+			l.result.Warnings = append(l.result.Warnings, Warning{File: file, Line: stmt.Line(), SQL: stmt.SQL()})
+		}
+		return nil
+	}
+	l.phases[phase] = append(l.phases[phase], statement{file: file, stmt: stmt})
+	return nil
+}
+
+// readColumns reads the directives of the column definitions. Only
+// -- hazel:renamed-from can be written there.
+func (l *loader) readColumns(file, table string, stmt parser.Statement) error {
+	for _, e := range parser.TableElements(stmt) {
+		ds, err := e.Directives()
+		if err != nil {
+			return located(file, err)
+		}
+		for _, d := range ds {
+			switch {
+			case d.Name != parser.RenamedFrom || e.Column == "":
+				return fmt.Errorf("%s:%d: %s%s cannot be written before a column or a table constraint",
+					file, d.Line, parser.DirectivePrefix, d.Name)
+			}
+			name, ok := parser.ParseName(d.Arg)
+			if !ok {
+				return needsName(file, d)
+			}
+			if l.columnRename[table] == nil {
+				l.columnRename[table] = map[string]string{}
+			}
+			l.columnRename[table][model.Key(e.Column)] = name
+		}
+	}
+	return nil
+}
+
+// needsName reports a renamed-from whose argument is not one name.
+func needsName(file string, d parser.Directive) error {
+	return fmt.Errorf("%s:%d: %s%s needs one name, the old one, as it is written in SQL", file, d.Line, parser.DirectivePrefix, d.Name)
+}
+
+// mark puts the directives on the schema read back.
+func (l *loader) mark(s *model.Schema) {
+	for key, t := range s.Tables.All() {
+		t.RenamedFrom = l.tableRename[key]
+		t.Ignored = l.ignored[parser.CreateTable][key] || l.ignored[parser.CreateVirtualTable][key]
+		for ckey, c := range t.Columns.All() {
+			c.RenamedFrom = l.columnRename[key][ckey]
+		}
+	}
+	for key, x := range s.Indexes.All() {
+		x.Ignored = l.ignored[parser.CreateIndex][key]
+	}
+	for key, x := range s.Views.All() {
+		x.Ignored = l.ignored[parser.CreateView][key]
+	}
+	for key, x := range s.Triggers.All() {
+		x.Ignored = l.ignored[parser.CreateTrigger][key]
+	}
 }
 
 // The phases the statements run in.
@@ -141,7 +304,7 @@ func execAll(ctx context.Context, pool *sql.DB, phases [][]statement) error {
 	}
 	for _, stmts := range phases {
 		for _, s := range stmts {
-			if _, err := conn.ExecContext(ctx, s.stmt.SQL()); err != nil {
+			if _, err := conn.ExecContext(ctx, s.stmt.WithoutDirectives()); err != nil {
 				return s.errorf(err)
 			}
 		}

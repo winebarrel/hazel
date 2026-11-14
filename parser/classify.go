@@ -62,3 +62,28 @@ func (s Statement) Line() int {
 	}
 	return 0
 }
+
+// ObjectName returns the name of the object a CREATE statement creates, or ""
+// for any other statement. A schema name before it is left out.
+func (s Statement) ObjectName() string {
+	if s.Classify() == Unsupported {
+		return ""
+	}
+	tokens := s.Significant()
+	i := 1
+	// UNIQUE INDEX, VIRTUAL TABLE.
+	for i < len(tokens) && (tokens[i].IsKeyword("UNIQUE") || tokens[i].IsKeyword("VIRTUAL")) {
+		i++
+	}
+	i++ // TABLE, INDEX, VIEW or TRIGGER
+	if i+2 < len(tokens) && tokens[i].IsKeyword("IF") && tokens[i+1].IsKeyword("NOT") && tokens[i+2].IsKeyword("EXISTS") {
+		i += 3
+	}
+	if i+2 < len(tokens) && tokens[i+1].IsPunct(".") {
+		i += 2
+	}
+	if i < len(tokens) {
+		return tokens[i].Name()
+	}
+	return ""
+}

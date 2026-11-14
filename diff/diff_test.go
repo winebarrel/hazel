@@ -83,9 +83,9 @@ func openDB(t *testing.T, init string) *sql.DB {
 
 func loadDesired(t *testing.T, body string) *model.Schema {
 	t.Helper()
-	schema, _, err := desired.Load(context.Background(), []desired.Source{{Name: "desired.sql", Body: body}})
+	result, err := desired.Load(context.Background(), []desired.Source{{Name: "desired.sql", Body: body}})
 	require.NoError(t, err)
-	return schema
+	return result.Schema
 }
 
 func TestPlanEmpty(t *testing.T) {

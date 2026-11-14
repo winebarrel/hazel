@@ -14,6 +14,12 @@ type TableElement struct {
 	// Tokens are the tokens of the element, from its first significant token
 	// to its last, with the whitespace and comments between them.
 	Tokens []Token
+	// Leading are the whitespace and comments between the separator before
+	// the element and the element, where its directives are written.
+	Leading []Token
+	// afterComma reports whether the element comes after a comma, rather
+	// than first after the opening parenthesis.
+	afterComma bool
 }
 
 // SQL returns the text of the element.
@@ -43,10 +49,10 @@ func TableElements(s Statement) []TableElement {
 		case t.IsPunct(")"):
 			depth--
 			if depth == 0 {
-				return append(elems, newTableElement(s.Tokens[start:i]))
+				return append(elems, newTableElement(s.Tokens[start:i], len(elems) > 0))
 			}
 		case depth == 1 && t.IsPunct(","):
-			elems = append(elems, newTableElement(s.Tokens[start:i]))
+			elems = append(elems, newTableElement(s.Tokens[start:i], len(elems) > 0))
 			start = i + 1
 		}
 	}
@@ -56,14 +62,17 @@ func TableElements(s Statement) []TableElement {
 // constraintKeywords start a table constraint.
 var constraintKeywords = []string{"CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOREIGN"}
 
-func newTableElement(tokens []Token) TableElement {
-	for len(tokens) > 0 && tokens[0].IsTrivia() {
-		tokens = tokens[1:]
+func newTableElement(tokens []Token, afterComma bool) TableElement {
+	n := 0
+	for n < len(tokens) && tokens[n].IsTrivia() {
+		n++
 	}
+	leading := tokens[:n]
+	tokens = tokens[n:]
 	for len(tokens) > 0 && tokens[len(tokens)-1].IsTrivia() {
 		tokens = tokens[:len(tokens)-1]
 	}
-	e := TableElement{Tokens: tokens}
+	e := TableElement{Tokens: tokens, Leading: leading, afterComma: afterComma}
 	if len(tokens) == 0 {
 		return e
 	}

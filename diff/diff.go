@@ -21,10 +21,17 @@ const (
 // created again. A virtual table whose definition changed is dropped and
 // created again, which loses its data.
 //
-// DROP COLUMN checks every view and trigger in the schema, so when the plan
-// drops a column, a view or a trigger that names a table dropping a column,
-// or a view that is dropped before the ALTER, is dropped and created again
-// too, and so on for the views that name those.
+// DROP COLUMN, RENAME TO and RENAME COLUMN check every view and trigger in
+// the schema, so when the plan runs one, a view or a trigger that names a
+// table dropping a column, or a view that is dropped before the ALTER, is
+// dropped and created again too, and so on for the views that name those.
+//
+// A table or a column whose desired definition has -- hazel:renamed-from is
+// renamed first, when the old name is in current and the new one is not.
+// SQLite rewrites what refers to the old name (foreign keys, views and
+// triggers) as it renames, so current is compared as it is after the
+// renames: the renames are run on a copy of it in memory. An object marked
+// with -- hazel:ignore is not created, changed or dropped.
 //
 // Definitions are compared with parser.TokensEqual, and constraints by their
 // content, not their names. Changing a column, a PRIMARY KEY, a UNIQUE, a
@@ -32,6 +39,9 @@ const (
 // is not supported yet and returns an error.
 func Diff(current, desired *model.Schema) (*Plan, error) {
 	d := &differ{cur: current, des: desired, dependencies: map[string]string{}, recreatedViews: map[string]bool{}}
+	if err := d.renames(); err != nil {
+		return nil, err
+	}
 	if err := d.tables(); err != nil {
 		return nil, err
 	}
@@ -44,12 +54,15 @@ func Diff(current, desired *model.Schema) (*Plan, error) {
 type differ struct {
 	cur, des *model.Schema
 	b        builder
-	// dropsColumns reports whether the plan drops a column.
-	dropsColumns bool
+	// rechecks reports whether the plan runs an ALTER TABLE that checks every
+	// view and trigger in the schema: DROP COLUMN, RENAME TO and RENAME
+	// COLUMN do.
+	rechecks bool
 	// dependencies maps the key of each table that drops a column, and of
 	// each view that is dropped and created again, to the reason a view or a
 	// trigger naming it gives: "users, which drops a column". It is used only
-	// when the plan drops a column.
+	// when the plan rechecks the schema. A renamed table is not there: SQLite
+	// rewrites what names it.
 	dependencies map[string]string
 	// recreatedViews holds the keys of the views that are dropped and created
 	// again. DROP VIEW drops the triggers on the view as well.
@@ -64,6 +77,7 @@ func (d *differ) tables() error {
 	for key, cur := range d.cur.Tables.All() {
 		des, ok := d.des.Tables.GetOk(key)
 		switch {
+		case ok && des.Ignored:
 		case !ok:
 			d.b.add(dropTables, removed, "DROP TABLE "+q(cur.Name))
 			d.b.dataLoss = append(d.b.dataLoss, "table  "+cur.Name)
@@ -80,7 +94,7 @@ func (d *differ) tables() error {
 		}
 	}
 	for key, des := range d.des.Tables.All() {
-		if !d.cur.Tables.Has(key) {
+		if !d.cur.Tables.Has(key) && !des.Ignored {
 			d.b.add(createTables, "", des.SQL)
 		}
 	}
@@ -128,7 +142,7 @@ func (d *differ) alterTable(cur, des *model.Table) error {
 		if !ok {
 			d.b.add(alterTables, removed, "ALTER TABLE "+q(cur.Name)+" DROP COLUMN "+q(c.Name))
 			d.b.dataLoss = append(d.b.dataLoss, "column "+cur.Name+"."+c.Name)
-			d.dropsColumns = true
+			d.rechecks = true
 			d.dependencies[model.Key(cur.Name)] = cur.Name + ", which drops a column"
 			continue
 		}
@@ -163,6 +177,7 @@ func (d *differ) indexes() {
 	for key, cur := range d.cur.Indexes.All() {
 		des, ok := d.des.Indexes.GetOk(key)
 		switch {
+		case ok && des.Ignored:
 		case !ok:
 			// An index goes with its table when the table is dropped.
 			if d.des.Tables.Has(model.Key(cur.Table)) {
@@ -174,7 +189,7 @@ func (d *differ) indexes() {
 		}
 	}
 	for key, des := range d.des.Indexes.All() {
-		if !d.cur.Indexes.Has(key) {
+		if !d.cur.Indexes.Has(key) && !des.Ignored {
 			d.b.add(createIndexes, "", des.SQL)
 		}
 	}
@@ -185,6 +200,10 @@ func (d *differ) views() {
 	for key, cur := range d.cur.Views.All() {
 		des, ok := d.des.Views.GetOk(key)
 		switch {
+		case ok && des.Ignored:
+			// An ignored view is left as it is, unless the schema check of
+			// an ALTER makes it be created again, as current has it.
+			kept = append(kept, key)
 		case !ok:
 			d.b.add(dropViewsAndTriggers, removed, "DROP VIEW "+q(cur.Name))
 		case !sqlEqual(cur.SQL, des.SQL):
@@ -195,7 +214,7 @@ func (d *differ) views() {
 	}
 	// A kept view that names a table dropping a column, or a view created
 	// again, is created again too, until no more views are added.
-	for d.dropsColumns {
+	for d.rechecks {
 		before := len(kept)
 		kept = slices.DeleteFunc(kept, func(key string) bool {
 			reason := d.dependency(d.cur.Views.Get(key).SQL)
@@ -209,7 +228,7 @@ func (d *differ) views() {
 		}
 	}
 	for key, des := range d.des.Views.All() {
-		if !d.cur.Views.Has(key) {
+		if !d.cur.Views.Has(key) && !des.Ignored {
 			d.b.add(createViews, "", des.SQL)
 		}
 	}
@@ -217,8 +236,12 @@ func (d *differ) views() {
 
 func (d *differ) recreateView(key, comment string) {
 	cur, des := d.cur.Views.Get(key), d.des.Views.Get(key)
+	sql := des.SQL
+	if des.Ignored {
+		sql = cur.SQL
+	}
 	d.b.add(dropViewsAndTriggers, comment, "DROP VIEW "+q(cur.Name))
-	d.b.add(createViews, "", des.SQL)
+	d.b.add(createViews, "", sql)
 	d.recreatedViews[key] = true
 	d.dependencies[key] = cur.Name + ", which is created again"
 }
@@ -231,6 +254,17 @@ func (d *differ) triggers() {
 		// does the DROP TABLE of a table that is dropped.
 		dropped := d.recreatedViews[table] || !d.des.Tables.Has(table) && !d.des.Views.Has(table)
 		switch {
+		case ok && des.Ignored:
+			// An ignored trigger is left as it is: when its view is created
+			// again, or the schema check of an ALTER needs it to be, it is
+			// created again as current has it. (Its table cannot be dropped:
+			// desired would not load.)
+			if dropped {
+				d.b.add(createTriggers, "", cur.SQL)
+			} else if reason := d.dependency(cur.SQL); d.rechecks && reason != "" {
+				d.b.add(dropViewsAndTriggers, dependsOn(reason), "DROP TRIGGER "+q(cur.Name))
+				d.b.add(createTriggers, "", cur.SQL)
+			}
 		case !ok:
 			if !dropped {
 				d.b.add(dropViewsAndTriggers, removed, "DROP TRIGGER "+q(cur.Name))
@@ -242,7 +276,7 @@ func (d *differ) triggers() {
 			d.b.add(createTriggers, "", des.SQL)
 		case dropped:
 			d.b.add(createTriggers, "", des.SQL)
-		case d.dropsColumns:
+		case d.rechecks:
 			if reason := d.dependency(cur.SQL); reason != "" {
 				d.b.add(dropViewsAndTriggers, dependsOn(reason), "DROP TRIGGER "+q(cur.Name))
 				d.b.add(createTriggers, "", des.SQL)
@@ -250,7 +284,7 @@ func (d *differ) triggers() {
 		}
 	}
 	for key, des := range d.des.Triggers.All() {
-		if !d.cur.Triggers.Has(key) {
+		if !d.cur.Triggers.Has(key) && !des.Ignored {
 			d.b.add(createTriggers, "", des.SQL)
 		}
 	}
