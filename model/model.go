@@ -43,6 +43,9 @@ type Table struct {
 	// created, changed or dropped. It is set on the desired side only.
 	Ignored bool
 	Columns *orderedmap.Map[string, *Column]
+	// RowidAlias is the INTEGER PRIMARY KEY column, which is the rowid, or ""
+	// when the table has none.
+	RowidAlias string
 	// PrimaryKey lists the columns of the PRIMARY KEY in key order. It is
 	// empty when the table has none. The key of a rowid alias (an INTEGER
 	// PRIMARY KEY) has no index, so its Desc is always false, even when

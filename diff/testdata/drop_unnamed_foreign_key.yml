@@ -7,6 +7,6 @@ desired: |
 plan: |
   -- table rebuild: t (FOREIGN KEY constraint)
   CREATE TABLE new_t (a);
-  INSERT INTO new_t (a) SELECT a FROM t;
+  INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

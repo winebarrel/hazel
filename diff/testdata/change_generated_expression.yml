@@ -5,6 +5,6 @@ desired: |
 plan: |
   -- table rebuild: t (generated expression of b)
   CREATE TABLE new_t (a, b AS (a + 2));
-  INSERT INTO new_t (a) SELECT a FROM t;
+  INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

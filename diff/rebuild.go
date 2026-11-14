@@ -14,8 +14,8 @@ import (
 // every change to the table is made by the rebuild, and changes lists them
 // all for the comment.
 //
-// The columns that both tables have are copied; a new column gets its
-// DEFAULT, and a dropped one is lost. AUTOINCREMENT keeps counting where it
+// The columns that both tables have are copied, and so are the rowids; a new
+// column gets its DEFAULT, and a dropped one is lost. AUTOINCREMENT keeps counting where it
 // was, since DROP TABLE deletes the table's row from sqlite_sequence. The
 // indexes and triggers of the table go with the DROP TABLE and are created
 // again, and the views and triggers that name the table are dropped and
@@ -31,12 +31,22 @@ func (d *differ) rebuild(cur, des *model.Table, changes []string) {
 
 	add(statement(des.SQL).WithObjectName(tmp))
 	var to, from []string
+	copiesAlias := false
 	for key, dc := range des.Columns.All() {
 		c, ok := cur.Columns.GetOk(key)
 		if ok && dc.Generated == model.NotGenerated {
 			to = append(to, q(dc.Name))
 			from = append(from, q(c.Name))
+			copiesAlias = copiesAlias || model.Key(dc.Name) == model.Key(des.RowidAlias)
 		}
+	}
+	// The rowids are kept, since an FTS5 external-content table or the
+	// application may refer to them, and INSERT ... SELECT would number the
+	// rows again. A column copied to the new INTEGER PRIMARY KEY sets the
+	// rowid already.
+	if rowid := rowidName(cur, des); rowid != "" && !copiesAlias && len(to) > 0 {
+		to = append([]string{rowid}, to...)
+		from = append([]string{rowid}, from...)
 	}
 	if len(to) > 0 {
 		add("INSERT INTO " + q(tmp) + " (" + strings.Join(to, ", ") + ") SELECT " + strings.Join(from, ", ") + " FROM " + q(cur.Name))
@@ -58,6 +68,20 @@ func (d *differ) rebuild(cur, des *model.Table, changes []string) {
 	d.rebuilt[key] = true
 	d.rechecks = true
 	d.dependencies[key] = des.Name + ", which is rebuilt"
+}
+
+// rowidName returns a name that reads the rowid in both tables, or "" when
+// either is a WITHOUT ROWID table or has columns under all three names.
+func rowidName(cur, des *model.Table) string {
+	if cur.WithoutRowid || des.WithoutRowid {
+		return ""
+	}
+	for _, name := range []string{"rowid", "_rowid_", "oid"} {
+		if !cur.Columns.Has(name) && !des.Columns.Has(name) {
+			return name
+		}
+	}
+	return ""
 }
 
 // tempName returns a name for the new table of a rebuild that no table,

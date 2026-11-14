@@ -5,6 +5,6 @@ desired: |
 plan: |
   -- table rebuild: t (COLLATE of a)
   CREATE TABLE new_t (a TEXT COLLATE NOCASE);
-  INSERT INTO new_t (a) SELECT a FROM t;
+  INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

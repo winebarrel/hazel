@@ -10,7 +10,7 @@ desired: |
 plan: |
   -- table rebuild: t (type of a)
   CREATE TABLE new_t (a TEXT, b);
-  INSERT INTO new_t (a, b) SELECT a, b FROM t;
+  INSERT INTO new_t (rowid, a, b) SELECT rowid, a, b FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;
   CREATE INDEX t_b ON t (b);

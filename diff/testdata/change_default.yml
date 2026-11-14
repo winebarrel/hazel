@@ -5,6 +5,6 @@ desired: |
 plan: |
   -- table rebuild: t (DEFAULT of a)
   CREATE TABLE new_t (a INT DEFAULT 1);
-  INSERT INTO new_t (a) SELECT a FROM t;
+  INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

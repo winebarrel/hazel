@@ -5,6 +5,6 @@ desired: |
 plan: |
   -- table rebuild: t (PRIMARY KEY)
   CREATE TABLE new_t (a PRIMARY KEY, b);
-  INSERT INTO new_t (a, b) SELECT a, b FROM t;
+  INSERT INTO new_t (rowid, a, b) SELECT rowid, a, b FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

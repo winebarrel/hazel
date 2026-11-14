@@ -81,6 +81,7 @@ func TestReadColumns(t *testing.T) {
 		{Name: "e", Type: "INT", Generated: model.GeneratedStored, GeneratedExpr: "id"},
 	}, tbl.Columns.CollectValues())
 	assert.Equal(t, []*model.IndexColumn{{Name: "id", Collation: "BINARY"}}, tbl.PrimaryKey)
+	assert.Equal(t, "id", tbl.RowidAlias)
 	assert.Empty(t, tbl.ForeignKeys)
 	assert.Empty(t, tbl.Uniques)
 }
@@ -94,6 +95,9 @@ func TestReadPrimaryKey(t *testing.T) {
 		`CREATE TABLE s (a INT PRIMARY KEY) STRICT`,
 	)
 	assert.Empty(t, schema.Tables.Get("none").PrimaryKey)
+	assert.Empty(t, schema.Tables.Get("none").RowidAlias)
+	assert.Empty(t, schema.Tables.Get("rowid").RowidAlias)
+	assert.Empty(t, schema.Tables.Get("kv").RowidAlias)
 	// a has no declared type, so the key is not the rowid and has an index.
 	assert.Equal(t, []*model.IndexColumn{{Name: "a", Desc: true, Collation: "BINARY"}},
 		schema.Tables.Get("rowid").PrimaryKey)
