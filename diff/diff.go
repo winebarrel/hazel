@@ -35,6 +35,9 @@ const (
 //
 // NOT NULL is set and dropped with ALTER COLUMN, a CHECK is added with ADD
 // CHECK, and a named CHECK or FOREIGN KEY is dropped with DROP CONSTRAINT.
+// The plan does not look at the rows: SET NOT NULL and ADD CHECK fail at
+// apply time when existing rows break them, since SQLite checks the rows
+// as it runs them.
 //
 // Definitions are compared with parser.TokensEqual, and constraints by their
 // content, not their names. The changes that need a table rebuild are not
