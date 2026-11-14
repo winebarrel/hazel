@@ -3,10 +3,13 @@
 package dump
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/winebarrel/hazel/format"
 	"github.com/winebarrel/hazel/model"
+	"github.com/winebarrel/hazel/parser"
 )
 
 // Options holds what String writes.
@@ -79,4 +82,32 @@ func String(s *model.Schema, o Options) string {
 		return ""
 	}
 	return strings.Join(stmts, "\n\n") + "\n"
+}
+
+// File is one file of a dump split by object.
+type File struct {
+	Name string
+	Body string
+}
+
+// Files returns a file for each object of Objects, named after it with
+// ".sql". A name that is the same as an earlier one when case is ignored,
+// which SQLite allows for letters outside ASCII but a file system that
+// ignores case does not, gets "_2", "_3" and so on. A name that is not a
+// plain file name, such as one with a "/", is an error.
+func Files(s *model.Schema, o Options) ([]File, error) {
+	var files []File
+	used := map[string]bool{}
+	for _, obj := range Objects(s, o) {
+		if strings.ContainsAny(obj.Name, `/\`) || !filepath.IsLocal(obj.Name+".sql") {
+			return nil, fmt.Errorf("cannot write a file for %s: the name is not a plain file name", parser.QuoteIdent(obj.Name))
+		}
+		name := obj.Name + ".sql"
+		for n := 2; used[strings.ToLower(name)]; n++ {
+			name = fmt.Sprintf("%s_%d.sql", obj.Name, n)
+		}
+		used[strings.ToLower(name)] = true
+		files = append(files, File{Name: name, Body: strings.Join(obj.Stmts, "\n\n") + "\n"})
+	}
+	return files, nil
 }
