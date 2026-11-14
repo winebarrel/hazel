@@ -9,7 +9,9 @@ desired: |
   CREATE INDEX new_t_2 ON new_t (x);
 plan: |
   -- table rebuild: t (type of a)
-  CREATE TABLE new_t_3 (a TEXT);
+  CREATE TABLE new_t_3 (
+      a TEXT
+  );
   INSERT INTO new_t_3 (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t_3 RENAME TO t;

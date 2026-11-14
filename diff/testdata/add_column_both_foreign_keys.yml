@@ -13,9 +13,9 @@ desired: |
 plan: |
   -- table rebuild: posts (FOREIGN KEY constraint; adds column user_id)
   CREATE TABLE new_posts (
-    id INTEGER PRIMARY KEY,
-    user_id INTEGER REFERENCES users (id),
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      id INTEGER PRIMARY KEY,
+      user_id INTEGER REFERENCES users (id),
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   );
   INSERT INTO new_posts (id) SELECT id FROM posts;
   DROP TABLE posts;

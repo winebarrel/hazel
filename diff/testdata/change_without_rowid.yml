@@ -4,7 +4,9 @@ desired: |
   CREATE TABLE t (a PRIMARY KEY) WITHOUT ROWID;
 plan: |
   -- table rebuild: t (WITHOUT ROWID; NOT NULL of a)
-  CREATE TABLE new_t (a PRIMARY KEY) WITHOUT ROWID;
+  CREATE TABLE new_t (
+      a PRIMARY KEY
+  ) WITHOUT ROWID;
   INSERT INTO new_t (a) SELECT a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

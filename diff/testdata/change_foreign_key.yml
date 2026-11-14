@@ -4,7 +4,9 @@ desired: |
   CREATE TABLE p (id INTEGER PRIMARY KEY); CREATE TABLE t (a REFERENCES p (id));
 plan: |
   -- table rebuild: t (FOREIGN KEY constraint)
-  CREATE TABLE new_t (a REFERENCES p (id));
+  CREATE TABLE new_t (
+      a REFERENCES p (id)
+  );
   INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

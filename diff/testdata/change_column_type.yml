@@ -4,7 +4,9 @@ desired: |
   CREATE TABLE t (a TEXT);
 plan: |
   -- table rebuild: t (type of a)
-  CREATE TABLE new_t (a TEXT);
+  CREATE TABLE new_t (
+      a TEXT
+  );
   INSERT INTO new_t (rowid, a) SELECT rowid, a FROM t;
   DROP TABLE t;
   ALTER TABLE new_t RENAME TO t;

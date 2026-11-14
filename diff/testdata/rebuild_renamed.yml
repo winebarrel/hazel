@@ -14,9 +14,9 @@ plan: |
   ALTER TABLE members RENAME COLUMN name TO display_name;
   -- table rebuild: members (type of age)
   CREATE TABLE new_members (
-    id INTEGER PRIMARY KEY,
-    display_name TEXT,
-    age INTEGER
+      id INTEGER PRIMARY KEY,
+      display_name TEXT,
+      age INTEGER
   );
   INSERT INTO new_members (id, display_name, age) SELECT id, display_name, age FROM members;
   DROP TABLE members;

@@ -11,6 +11,6 @@ desired: |
   );
 plan: |
   CREATE TABLE posts (
-    id INTEGER PRIMARY KEY, -- the key
-    title TEXT
+      id INTEGER PRIMARY KEY, -- the key
+      title TEXT
   );

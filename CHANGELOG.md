@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+* `plan`, `apply` and `diff` write the CREATE statements they run in the layout of `dump`: a CREATE TABLE has one column or constraint per line, and names lose the quotes they do not need. The statements are kept that way in the database.
+
 * `hazel fmt SCHEMA_FILE...` lays out the schema files in place, the way `dump` writes the statements. The statements are separated by one blank line, the comments before a statement stay before it, and a comment on the line of a `;` stays on that line. Statements that hazel does not manage and those marked with `-- hazel:execute` are left as they are. The files are loaded together before and after, and nothing is written unless both give the same schema. `--check` writes nothing, prints the files that are not formatted and exits with status 2 when there are any. `--strip-renamed-from` drops the `-- hazel:renamed-from` directives.
 
 * `hazel dump --split=DIR` writes a file for each table, view and virtual table, named after it with `.sql`, holding its CREATE statement, then its indexes and triggers. The directory is created if it does not exist, a file of the same name is overwritten, and files of objects no longer in the database are left alone. A name that differs from an earlier one in case only gets `_2`, `_3` and so on, and a name with `/` or `\` is an error.

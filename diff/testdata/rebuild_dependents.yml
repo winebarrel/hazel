@@ -30,7 +30,12 @@ plan: |
   DROP VIEW user_names;
   DROP TRIGGER posts_ai;
   -- table rebuild: users (type of age; drops column legacy; adds column email)
-  CREATE TABLE new_users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, email TEXT DEFAULT '');
+  CREATE TABLE new_users (
+      id INTEGER PRIMARY KEY,
+      name TEXT,
+      age INTEGER,
+      email TEXT DEFAULT ''
+  );
   INSERT INTO new_users (id, name, age) SELECT id, name, age FROM users;
   DROP TABLE users;
   ALTER TABLE new_users RENAME TO users;
