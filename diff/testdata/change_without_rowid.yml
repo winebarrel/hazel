@@ -1,0 +1,5 @@
+init: |
+  CREATE TABLE t (a PRIMARY KEY);
+desired: |
+  CREATE TABLE t (a PRIMARY KEY) WITHOUT ROWID;
+error: "table t: changing WITHOUT ROWID is not supported yet"

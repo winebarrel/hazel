@@ -1,0 +1,18 @@
+init: |
+  CREATE TABLE t (a, b);
+  CREATE VIEW v AS SELECT a FROM t;
+  CREATE TRIGGER v_keep INSTEAD OF INSERT ON v BEGIN INSERT INTO t (a) VALUES (new.a); END;
+  CREATE TRIGGER v_changed INSTEAD OF DELETE ON v BEGIN DELETE FROM t; END;
+  CREATE TRIGGER v_gone INSTEAD OF UPDATE ON v BEGIN SELECT 1; END;
+# DROP VIEW drops the triggers on the view, so they are only created again.
+desired: |
+  CREATE TABLE t (a, b);
+  CREATE VIEW v AS SELECT a, b FROM t;
+  CREATE TRIGGER v_keep INSTEAD OF INSERT ON v BEGIN INSERT INTO t (a) VALUES (new.a); END;
+  CREATE TRIGGER v_changed INSTEAD OF DELETE ON v BEGIN DELETE FROM t WHERE a = old.a; END;
+plan: |
+  -- drop and create: definition changed
+  DROP VIEW v;
+  CREATE VIEW v AS SELECT a, b FROM t;
+  CREATE TRIGGER v_keep INSTEAD OF INSERT ON v BEGIN INSERT INTO t (a) VALUES (new.a); END;
+  CREATE TRIGGER v_changed INSTEAD OF DELETE ON v BEGIN DELETE FROM t WHERE a = old.a; END;

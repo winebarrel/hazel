@@ -1,0 +1,13 @@
+init: |
+  CREATE TABLE "Users" (id INTEGER PRIMARY KEY, name varchar(10) NOT NULL);
+  CREATE INDEX users_name ON users (name);
+  CREATE VIEW v AS SELECT id FROM users;
+  CREATE TRIGGER tr AFTER INSERT ON users BEGIN SELECT 1; END;
+# Names are matched without ASCII case, and type names and SQL are compared
+# by their tokens.
+desired: |
+  create table users (ID integer primary key, NAME VARCHAR( 10 ) not null);
+  create index USERS_NAME on "users" (name);
+  create view V as select id from USERS;
+  create trigger TR after insert on users begin select 1; end;
+plan: ""

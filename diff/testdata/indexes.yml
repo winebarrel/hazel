@@ -1,0 +1,15 @@
+init: |
+  CREATE TABLE t (a, b, c);
+  CREATE INDEX t_a ON t (a);
+  CREATE INDEX t_b ON t (b);
+desired: |
+  CREATE TABLE t (a, b, c);
+  CREATE INDEX t_b ON t (b) WHERE b IS NOT NULL;
+  CREATE UNIQUE INDEX t_c ON t (c);
+plan: |
+  -- drop: removed from schema
+  DROP INDEX t_a;
+  -- drop and create: definition changed
+  DROP INDEX t_b;
+  CREATE INDEX t_b ON t (b) WHERE b IS NOT NULL;
+  CREATE UNIQUE INDEX t_c ON t (c);

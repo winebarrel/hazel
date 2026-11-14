@@ -1,0 +1,8 @@
+init: |
+  CREATE TABLE t AS SELECT 1 AS a;
+# SQLite stores a CREATE TABLE ... AS SELECT as CREATE TABLE t(a,b), so the
+# new column has a definition to add.
+desired: |
+  CREATE TABLE t AS SELECT 1 AS a, 2 AS "b c";
+plan: |
+  ALTER TABLE t ADD COLUMN "b c";

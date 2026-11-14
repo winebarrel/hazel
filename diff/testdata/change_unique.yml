@@ -1,0 +1,5 @@
+init: |
+  CREATE TABLE t (a, b);
+desired: |
+  CREATE TABLE t (a UNIQUE, b);
+error: "table t: changing a UNIQUE constraint is not supported yet"

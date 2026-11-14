@@ -1,0 +1,17 @@
+init: |
+  CREATE TABLE "order" (id INTEGER PRIMARY KEY, "the note" TEXT, "Select" INT);
+  CREATE INDEX "my index" ON "order" ("the note");
+  CREATE TABLE "drop me" (a);
+desired: |
+  CREATE TABLE "order" (id INTEGER PRIMARY KEY);
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   table  drop me
+  --   column order.the note
+  --   column order.Select
+  --
+  -- drop: removed from schema
+  DROP INDEX "my index";
+  ALTER TABLE "order" DROP COLUMN "the note";
+  ALTER TABLE "order" DROP COLUMN "Select";
+  DROP TABLE "drop me";

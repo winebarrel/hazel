@@ -1,0 +1,28 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, legacy TEXT);
+  CREATE TABLE log (x);
+  CREATE INDEX users_name ON users (name);
+  CREATE VIEW user_names AS SELECT id, name FROM users;
+  CREATE VIEW logs AS SELECT * FROM log;
+  CREATE TRIGGER users_ai AFTER INSERT ON users BEGIN INSERT INTO log VALUES (new.name); END;
+# DROP COLUMN fails while a view or a trigger uses the table, so they are
+# dropped first and created again. The index does not use the column and
+# stays.
+desired: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+  CREATE TABLE log (x);
+  CREATE INDEX users_name ON users (name);
+  CREATE VIEW user_names AS SELECT id, name FROM users;
+  CREATE VIEW logs AS SELECT * FROM log;
+  CREATE TRIGGER users_ai AFTER INSERT ON users BEGIN INSERT INTO log VALUES (new.name); END;
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   column users.legacy
+  --
+  -- drop and create: depends on users, which drops a column
+  DROP VIEW user_names;
+  DROP TRIGGER users_ai;
+  -- drop: removed from schema
+  ALTER TABLE users DROP COLUMN legacy;
+  CREATE VIEW user_names AS SELECT id, name FROM users;
+  CREATE TRIGGER users_ai AFTER INSERT ON users BEGIN INSERT INTO log VALUES (new.name); END;

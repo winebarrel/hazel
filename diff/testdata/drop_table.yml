@@ -1,0 +1,18 @@
+init: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY, legacy TEXT);
+  CREATE TABLE old_logs (id INTEGER PRIMARY KEY, body TEXT);
+  CREATE INDEX old_logs_body ON old_logs (body);
+  CREATE TRIGGER old_logs_ai AFTER INSERT ON old_logs BEGIN SELECT 1; END;
+  CREATE VIEW legacy_view AS SELECT * FROM old_logs;
+# The index and the trigger of old_logs go with the table.
+desired: |
+  CREATE TABLE users (id INTEGER PRIMARY KEY);
+plan: |
+  -- WARNING: the following will be dropped and their data will be lost:
+  --   table  old_logs
+  --   column users.legacy
+  --
+  -- drop: removed from schema
+  DROP VIEW legacy_view;
+  ALTER TABLE users DROP COLUMN legacy;
+  DROP TABLE old_logs;

@@ -1,0 +1,18 @@
+init: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY, code TEXT UNIQUE);
+  CREATE TABLE t (
+    a, b, c,
+    UNIQUE (a), UNIQUE (b, c),
+    FOREIGN KEY (a) REFERENCES p (id),
+    FOREIGN KEY (b) REFERENCES p (code) ON DELETE CASCADE
+  );
+# The constraints are matched by content, in any order.
+desired: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY, code TEXT UNIQUE);
+  CREATE TABLE t (
+    a, b, c,
+    UNIQUE (B, C), UNIQUE (A),
+    FOREIGN KEY (b) REFERENCES P (code) ON DELETE CASCADE,
+    FOREIGN KEY (a) REFERENCES p (id)
+  );
+plan: ""

@@ -1,0 +1,7 @@
+init: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY);
+  CREATE TABLE t (a REFERENCES p (id));
+desired: |
+  CREATE TABLE p (id INTEGER PRIMARY KEY);
+  CREATE TABLE t (a REFERENCES p (id) ON DELETE CASCADE);
+error: "table t: changing a FOREIGN KEY constraint is not supported yet"
