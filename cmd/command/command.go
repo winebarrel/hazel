@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/winebarrel/hazel/desired"
 	"github.com/winebarrel/hazel/diff"
@@ -42,7 +43,7 @@ type Check struct {
 }
 
 // loadFiles loads the schema files and writes their warnings.
-func loadFiles(ctx context.Context, paths []string, stderr io.Writer) (*model.Schema, error) {
+func loadFiles(ctx context.Context, paths []string, stderr io.Writer) (*desired.Result, error) {
 	srcs, err := desired.ReadFiles(paths)
 	if err != nil {
 		return nil, err
@@ -54,31 +55,61 @@ func loadFiles(ctx context.Context, paths []string, stderr io.Writer) (*model.Sc
 	for _, w := range result.Warnings {
 		fmt.Fprintf(stderr, "hazel: warning: %s\n", w) //nolint:errcheck
 	}
-	return result.Schema, nil
+	return result, nil
 }
 
-// writePlan writes the plan, and decides how the run ends. A plan that
-// rebuilds a table without --allow-table-rebuild is not written: the tables
-// and their changes are listed instead.
-func writePlan(w io.Writer, plan *diff.Plan, allowRebuild, check bool) error {
-	if len(plan.Rebuilds) > 0 && !allowRebuild {
-		for _, r := range plan.Rebuilds {
-			fmt.Fprintf(w, "-- table rebuild required: %s\n", r) //nolint:errcheck
-		}
-		if check {
-			return ErrChanges
-		}
-		return &RebuildRequiredError{Rebuilds: plan.Rebuilds}
+// refuseRebuild lists the tables the plan rebuilds and returns the error that
+// refuses them, when --allow-table-rebuild is not set. With --check, the
+// changes win: ErrChanges.
+func refuseRebuild(w io.Writer, plan *diff.Plan, allowRebuild, check bool) error {
+	if len(plan.Rebuilds) == 0 || allowRebuild {
+		return nil
 	}
-	if plan.IsEmpty() {
+	for _, r := range plan.Rebuilds {
+		fmt.Fprintf(w, "-- table rebuild required: %s\n", r) //nolint:errcheck
+	}
+	if check {
+		return ErrChanges
+	}
+	return &RebuildRequiredError{Rebuilds: plan.Rebuilds}
+}
+
+// writePlan writes the plan and the execute statements after it, and
+// decides how the run ends.
+func writePlan(w io.Writer, plan *diff.Plan, executes []string, allowRebuild, check bool) error {
+	if err := refuseRebuild(w, plan, allowRebuild, check); err != nil {
+		return err
+	}
+	if plan.IsEmpty() && len(executes) == 0 {
 		fmt.Fprintln(w, "-- No changes") //nolint:errcheck
 		return nil
 	}
 	fmt.Fprint(w, plan) //nolint:errcheck
+	for _, e := range executes {
+		fmt.Fprintln(w, e) //nolint:errcheck
+	}
 	if check {
 		return ErrChanges
 	}
 	return nil
+}
+
+// formatExecute writes a statement marked with -- hazel:execute as the plan
+// shows it: the directive with its condition, an optional note, and the
+// statement.
+func formatExecute(e desired.Execute, note string) string {
+	directive := "-- hazel:execute"
+	if e.Condition != "" {
+		directive += " " + e.Condition
+	}
+	if note != "" {
+		directive += "\n-- " + strings.Join(strings.Fields(note), " ")
+	}
+	sql := strings.TrimRight(e.SQL, " \t\r\n")
+	if !strings.HasSuffix(sql, ";") {
+		sql += ";"
+	}
+	return directive + "\n" + sql
 }
 
 // summary returns "2 tables, 1 view, 3 indexes, 0 triggers".

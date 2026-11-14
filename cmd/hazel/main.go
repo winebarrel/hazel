@@ -20,8 +20,9 @@ type cli struct {
 	Config  kong.ConfigFlag  `short:"C" name:"config" placeholder:"FILE" env:"HAZEL_CONFIG" help:"Load options from a YAML file."`
 	Version kong.VersionFlag `help:"Print the version of hazel and of the SQLite it bundles."`
 
-	Plan command.Plan `cmd:"" help:"Print the DDL that takes the database to the schema files."`
-	Diff command.Diff `cmd:"" help:"Print the DDL that takes one schema file to another. No database is read."`
+	Plan  command.Plan  `cmd:"" help:"Print the DDL that takes the database to the schema files."`
+	Apply command.Apply `cmd:"" help:"Run the DDL that takes the database to the schema files, in one transaction."`
+	Diff  command.Diff  `cmd:"" help:"Print the DDL that takes one schema file to another. No database is read."`
 }
 
 func main() {

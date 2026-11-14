@@ -27,7 +27,7 @@ import (
 // DEFERRABLE) is read from the SQL with parser.ParseCreateTable. The MATCH clause
 // of a foreign key is not read: SQLite parses it and keeps nothing of it, so
 // PRAGMA foreign_key_list always reports NONE.
-func Read(ctx context.Context, db *sql.DB) (*model.Schema, error) {
+func Read(ctx context.Context, db Queryer) (*model.Schema, error) {
 	r := &reader{ctx: ctx, db: db}
 	s := model.NewSchema()
 	for _, o := range r.objects() {
@@ -50,13 +50,19 @@ func Read(ctx context.Context, db *sql.DB) (*model.Schema, error) {
 	return s, nil
 }
 
+// Queryer is what Read queries: a *sql.DB, or a *sql.Conn, such as one that
+// holds a transaction.
+type Queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
 // reader runs the queries of one Read. The first error is kept in err, and
 // every query after it returns nothing. The error names the object being
 // read, since a PRAGMA can fail on one object, such as a view whose table
 // was dropped.
 type reader struct {
 	ctx    context.Context
-	db     *sql.DB
+	db     Queryer
 	object string // "view v", or "" while reading sqlite_schema
 	err    error
 }
