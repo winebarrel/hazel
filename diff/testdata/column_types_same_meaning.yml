@@ -1,0 +1,67 @@
+init: |
+  CREATE TABLE t (
+    int_a INT,
+    int_b INTEGER,
+    int_c TINYINT,
+    int_d SMALLINT,
+    int_e MEDIUMINT,
+    int_f BIGINT,
+    int_g UNSIGNED BIG INT,
+    int_h INT2,
+    int_i INT8,
+    text_a CHARACTER(20),
+    text_b VARCHAR(255),
+    text_c VARYING CHARACTER(255),
+    text_d NCHAR(55),
+    text_e NATIVE CHARACTER(70),
+    text_f NVARCHAR(100),
+    text_g TEXT,
+    text_h CLOB,
+    blob_a BLOB,
+    blob_b,
+    real_a REAL,
+    real_b DOUBLE,
+    real_c DOUBLE PRECISION,
+    real_d FLOAT,
+    numeric_a NUMERIC,
+    numeric_b DECIMAL(10, 5),
+    numeric_c BOOLEAN,
+    numeric_d DATE,
+    numeric_e DATETIME
+  );
+  CREATE TABLE s (a INT, b INTEGER, c REAL, d TEXT, e BLOB, f ANY) STRICT;
+# Type names are compared by their tokens, so the case and the whitespace do
+# not matter.
+desired: |
+  CREATE TABLE t (
+    int_a int,
+    int_b integer,
+    int_c tinyint,
+    int_d smallint,
+    int_e mediumint,
+    int_f bigint,
+    int_g Unsigned  Big Int,
+    int_h int2,
+    int_i int8,
+    text_a character( 20 ),
+    text_b varchar( 255 ),
+    text_c varying   character(255),
+    text_d nchar(55),
+    text_e native character (70),
+    text_f nvarchar(100),
+    text_g text,
+    text_h clob,
+    blob_a blob,
+    blob_b,
+    real_a real,
+    real_b double,
+    real_c double   precision,
+    real_d float,
+    numeric_a numeric,
+    numeric_b decimal( 10,5 ),
+    numeric_c boolean,
+    numeric_d date,
+    numeric_e datetime
+  );
+  CREATE TABLE s (a int, b integer, c real, d text, e blob, f any) STRICT;
+plan: ""
