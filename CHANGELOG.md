@@ -2,7 +2,7 @@
 
 # Changelog
 
-## [Unreleased]
+## [1.4.0] - 2026-11-15
 
 * **BREAKING**: `--allow-table-rebuild` is renamed to `--allow-rebuild`, `HAZEL_ALLOW_TABLE_REBUILD` to `HAZEL_ALLOW_REBUILD`, and `allow-table-rebuild` in the configuration file to `allow-rebuild`. The old names are no longer accepted.
 
@@ -44,7 +44,8 @@
 
 * The `hazel` command, with `plan` and `diff`. `plan DB SCHEMA_FILE...` prints the DDL that takes a database to the schema files, and `diff OLD_SCHEMA_FILE NEW_SCHEMA_FILE` the DDL that takes one schema file to another. A plan that rebuilds a table fails with exit status 3 unless `--allow-table-rebuild` is given, `--check` exits with status 2 when there are changes, and `-I` / `-E` select the tables, views and virtual tables by name. Options can also come from environment variables (`HAZEL_*`) and from a YAML file given with `-C`.
 
-[unreleased]: https://github.com/winebarrel/hazel/compare/v1.3.0...HEAD
+[unreleased]: https://github.com/winebarrel/hazel/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/winebarrel/hazel/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/winebarrel/hazel/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/winebarrel/hazel/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/winebarrel/hazel/compare/v1.0.0...v1.1.0
