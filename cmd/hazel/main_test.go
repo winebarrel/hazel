@@ -158,17 +158,17 @@ func TestPlanRebuild(t *testing.T) {
 	assert.Equal(t, 3, code)
 	assert.True(t, strings.HasSuffix(out, "-- table rebuild required: t (type of a)\n"), out)
 	assert.NotContains(t, out, "CREATE TABLE new_t")
-	assert.Equal(t, "hazel: error: 1 table needs a rebuild; pass --allow-table-rebuild to allow it\n", errOut)
+	assert.Equal(t, "hazel: error: 1 table needs a rebuild; pass --allow-rebuild to allow it\n", errOut)
 
 	// With --check, the changes win: exit status 2.
 	_, _, code = hazel(t, "plan", "--check", "app.db", "schema.sql")
 	assert.Equal(t, 2, code)
 
-	out, _, code = hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
+	out, _, code = hazel(t, "plan", "--allow-rebuild", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
 	assert.Contains(t, out, "-- table rebuild: t (type of a)\nCREATE TABLE new_t (\n    a TEXT\n);\n")
 
-	t.Setenv("HAZEL_ALLOW_TABLE_REBUILD", "true")
+	t.Setenv("HAZEL_ALLOW_REBUILD", "true")
 	_, _, code = hazel(t, "plan", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
 }
@@ -178,7 +178,7 @@ func TestPlanRebuildMany(t *testing.T) {
 	createDB(t, "app.db", "CREATE TABLE t (a INT); CREATE TABLE u (b INT)")
 	_, errOut, code := hazel(t, "plan", "app.db", "schema.sql")
 	assert.Equal(t, 3, code)
-	assert.Equal(t, "hazel: error: 2 tables need a rebuild; pass --allow-table-rebuild to allow it\n", errOut)
+	assert.Equal(t, "hazel: error: 2 tables need a rebuild; pass --allow-rebuild to allow it\n", errOut)
 }
 
 func TestPlanFilter(t *testing.T) {
@@ -245,9 +245,9 @@ func TestPlanBadPattern(t *testing.T) {
 func TestConfig(t *testing.T) {
 	workdir(t, map[string]string{
 		"schema.sql": "CREATE TABLE t (a TEXT); CREATE TABLE tmp_x (a);",
-		"hazel.yml":  "allow-table-rebuild: true\nexclude:\n  - tmp_*\n",
+		"hazel.yml":  "allow-rebuild: true\nexclude:\n  - tmp_*\n",
 		"check.yml":  "check: true\n",
-		"bad.yml":    "allow_table_rebuild: true\n",
+		"bad.yml":    "allow_rebuild: true\n",
 		"broken.yml": "exclude: [",
 	})
 	createDB(t, "app.db", "CREATE TABLE t (a INT)")
@@ -262,7 +262,7 @@ func TestConfig(t *testing.T) {
 	assert.Equal(t, 0, code)
 
 	// An environment variable wins over the file.
-	t.Setenv("HAZEL_ALLOW_TABLE_REBUILD", "false")
+	t.Setenv("HAZEL_ALLOW_REBUILD", "false")
 	_, _, code = hazel(t, "plan", "app.db", "schema.sql")
 	assert.Equal(t, 3, code)
 
@@ -272,7 +272,7 @@ func TestConfig(t *testing.T) {
 
 	_, errOut, code = hazel(t, "-C", "bad.yml", "plan", "app.db", "schema.sql")
 	assert.Equal(t, 80, code)
-	assert.Contains(t, errOut, "unknown config key(s): allow_table_rebuild")
+	assert.Contains(t, errOut, "unknown config key(s): allow_rebuild")
 
 	_, errOut, code = hazel(t, "-C", "broken.yml", "plan", "app.db", "schema.sql")
 	assert.NotEqual(t, 0, code)
@@ -349,7 +349,7 @@ CREATE TABLE u (
 
 	_, _, code = hazel(t, "diff", "old.sql", "reb.sql")
 	assert.Equal(t, 3, code)
-	_, _, code = hazel(t, "diff", "--allow-table-rebuild", "old.sql", "reb.sql")
+	_, _, code = hazel(t, "diff", "--allow-rebuild", "old.sql", "reb.sql")
 	assert.Equal(t, 0, code)
 
 	_, _, code = hazel(t, "diff", "old.sql")
@@ -589,7 +589,7 @@ func TestApplyRebuild(t *testing.T) {
 	assert.Contains(t, errOut, "1 table needs a rebuild")
 	assert.Equal(t, "INT", query(t, "app.db", "SELECT type FROM pragma_table_info('t') WHERE name = 'a'"))
 
-	_, _, code = hazel(t, "apply", "--allow-table-rebuild", "app.db", "schema.sql")
+	_, _, code = hazel(t, "apply", "--allow-rebuild", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "TEXT", query(t, "app.db", "SELECT type FROM pragma_table_info('t') WHERE name = 'a'"))
 	assert.Equal(t, "10", query(t, "app.db", "SELECT a FROM t"))
@@ -645,7 +645,7 @@ func TestApplyRollsBack(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			workdir(t, map[string]string{"schema.sql": tt.schema})
 			createDB(t, "app.db", tt.init)
-			_, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", "schema.sql")
+			_, errOut, code := hazel(t, "apply", "--allow-rebuild", "app.db", "schema.sql")
 			assert.Equal(t, 1, code)
 			assert.Contains(t, errOut, tt.want)
 			assert.Equal(t, "0", query(t, "app.db",
@@ -1156,7 +1156,7 @@ CREATE TABLE t (id INTEGER PRIMARY KEY, a INT, b TEXT);
 CREATE INDEX t_b ON t (b);
 INSERT INTO t VALUES (1, 1, 'x'), (2, 1, 'y');
 `)
-	out, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", "schema.sql")
+	out, errOut, code := hazel(t, "apply", "--allow-rebuild", "app.db", "schema.sql")
 	assert.Equal(t, 1, code)
 	// The rebuild ran up to the rename, and the unique index failed after it.
 	assert.Contains(t, out, "ALTER TABLE new_t RENAME TO t;\n-- ok")
@@ -1193,21 +1193,21 @@ func TestEnvironment(t *testing.T) {
 
 	// HAZEL_EXCLUDE and HAZEL_INCLUDE take a comma-separated list.
 	t.Setenv("HAZEL_EXCLUDE", "tmp_*,old_*")
-	out, _, code := hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
+	out, _, code := hazel(t, "plan", "--allow-rebuild", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
 	assert.NotContains(t, out, "DROP TABLE tmp_x")
 	assert.NotContains(t, out, "DROP TABLE old_y")
 	t.Setenv("HAZEL_EXCLUDE", "")
 	t.Setenv("HAZEL_INCLUDE", "t,tmp_*")
-	out, _, code = hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
+	out, _, code = hazel(t, "plan", "--allow-rebuild", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
 	assert.Contains(t, out, "DROP TABLE tmp_x")
 	assert.NotContains(t, out, "old_y")
 	t.Setenv("HAZEL_INCLUDE", "")
 
 	// A command-line option wins over its environment variable.
-	t.Setenv("HAZEL_ALLOW_TABLE_REBUILD", "false")
-	_, _, code = hazel(t, "plan", "--allow-table-rebuild", "app.db", "schema.sql")
+	t.Setenv("HAZEL_ALLOW_REBUILD", "false")
+	_, _, code = hazel(t, "plan", "--allow-rebuild", "app.db", "schema.sql")
 	assert.Equal(t, 0, code)
 	_, _, code = hazel(t, "plan", "app.db", "schema.sql")
 	assert.Equal(t, 3, code)
@@ -1255,7 +1255,7 @@ func TestApplyBackfill(t *testing.T) {
 		t.Run(file, func(t *testing.T) {
 			require.NoError(t, os.RemoveAll("app.db"))
 			createDB(t, "app.db", "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'a'), (2, 'b');")
-			_, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", file)
+			_, errOut, code := hazel(t, "apply", "--allow-rebuild", "app.db", file)
 			require.Equal(t, 0, code, errOut)
 			assert.Equal(t, "1:A,2:B", query(t, "app.db", "SELECT group_concat(id || ':' || code, ',') FROM (SELECT * FROM users ORDER BY id)"))
 			out, _, code := hazel(t, "plan", "app.db", file)
@@ -1285,7 +1285,7 @@ func TestApplyBackfillSetNotNull(t *testing.T) {
 		t.Run(file, func(t *testing.T) {
 			require.NoError(t, os.RemoveAll("app.db"))
 			createDB(t, "app.db", "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, NULL), (2, 'Bob');")
-			_, errOut, code := hazel(t, "apply", "--allow-table-rebuild", "app.db", file)
+			_, errOut, code := hazel(t, "apply", "--allow-rebuild", "app.db", file)
 			require.Equal(t, 0, code, errOut)
 			assert.Equal(t, "1:user-1,2:Bob", query(t, "app.db", "SELECT group_concat(id || ':' || name, ',') FROM (SELECT * FROM users ORDER BY id)"))
 		})

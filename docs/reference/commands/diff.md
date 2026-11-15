@@ -5,7 +5,7 @@ diff -- print the DDL that takes one schema file to another
 ## Synopsis
 
 ```
-hazel diff [-I PAT]... [-E PAT]... [--allow-table-rebuild] [--check] OLD_SCHEMA_FILE NEW_SCHEMA_FILE
+hazel diff [-I PAT]... [-E PAT]... [--allow-rebuild] [--check] OLD_SCHEMA_FILE NEW_SCHEMA_FILE
 ```
 
 ## Description
@@ -25,14 +25,14 @@ CREATE TABLE u (
 );
 ```
 
-The output and the rules are those of `plan`: a rebuild needs `--allow-table-rebuild`, and the directives of `NEW_SCHEMA_FILE` apply.
+The output and the rules are those of `plan`: a rebuild needs `--allow-rebuild`, and the directives of `NEW_SCHEMA_FILE` apply.
 
 ## Options
 
 `-I PAT`, `--include=PAT`, `-E PAT`, `--exclude=PAT`
 :   Select the tables, views and virtual tables to manage, as for [`plan`](plan.md#filtering).
 
-`--allow-table-rebuild`
+`--allow-rebuild`
 :   Allow rebuilding a table for a change `ALTER TABLE` cannot make.
 
 `--check`
@@ -40,7 +40,7 @@ The output and the rules are those of `plan`: a rebuild needs `--allow-table-reb
 
 ## Exit status
 
-0 on success, also when there are changes. 1 on an error. 2 with `--check` when there are changes. 3 when a rebuild is needed and `--allow-table-rebuild` is not given. 80 on a usage error.
+0 on success, also when there are changes. 1 on an error. 2 with `--check` when there are changes. 3 when a rebuild is needed and `--allow-rebuild` is not given. 80 on a usage error.
 
 ## Examples
 

@@ -2,6 +2,10 @@
 
 # Changelog
 
+## [Unreleased]
+
+* **BREAKING**: `--allow-table-rebuild` is renamed to `--allow-rebuild`, `HAZEL_ALLOW_TABLE_REBUILD` to `HAZEL_ALLOW_REBUILD`, and `allow-table-rebuild` in the configuration file to `allow-rebuild`. The old names are no longer accepted.
+
 ## [1.3.0] - 2026-11-15
 
 * `plan --no-create` and `apply --no-create` fail when the database file does not exist, instead of taking it as an empty database or creating it. `HAZEL_NO_CREATE` and `no-create` in the configuration file set it too.

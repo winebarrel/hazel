@@ -79,7 +79,7 @@ ALTER TABLE posts ADD COLUMN created_at TEXT;
 CREATE UNIQUE INDEX users_email ON users (email);
 ```
 
-The new column is written at the end of the table, since that is the only place `ADD COLUMN` can put it; the order of the columns is not compared. A change that `ALTER TABLE` cannot make, such as a new column type, needs a rebuild of the table; `plan` then fails with exit status 3 until `--allow-table-rebuild` is given. See [Schema objects](reference/objects.md).
+The new column is written at the end of the table, since that is the only place `ADD COLUMN` can put it; the order of the columns is not compared. A change that `ALTER TABLE` cannot make, such as a new column type, needs a rebuild of the table; `plan` then fails with exit status 3 until `--allow-rebuild` is given. See [Schema objects](reference/objects.md).
 
 ## Apply it
 

@@ -6,22 +6,22 @@ demo.db holds the schema from current.sql, with a few rows.
 
 Try the following:
 
-  hazel plan  --allow-table-rebuild demo.db desired.sql
+  hazel plan  --allow-rebuild demo.db desired.sql
                                     # show the DDL diff
-    # --allow-table-rebuild: posts needs a rebuild, and plan
+    # --allow-rebuild: posts needs a rebuild, and plan
     # fails without it
-  hazel apply --allow-table-rebuild demo.db desired.sql
+  hazel apply --allow-rebuild demo.db desired.sql
                                     # apply the changes
   hazel plan  demo.db desired.sql   # ...should now print
                                     # "-- No changes"
   hazel dump  demo.db               # dump the current schema
   hazel fmt   desired.sql           # format the file in place
-  hazel diff  --allow-table-rebuild current.sql desired.sql
+  hazel diff  --allow-rebuild current.sql desired.sql
                                     # diff two files, no database
   sqlite3     demo.db               # poke around the DB
 
 A change that ALTER TABLE cannot make rebuilds the table, which
-runs only with --allow-table-rebuild. Drops always run, and the
+runs only with --allow-rebuild. Drops always run, and the
 plan lists the tables and columns whose data they lose.
 
 Files in this directory (/demo):

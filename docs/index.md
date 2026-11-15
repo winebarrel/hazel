@@ -18,7 +18,7 @@ CREATE INDEX users_email ON users (email);
 
 1. The schema files are run in an in-memory database, and the resulting schema is read back from `sqlite_schema` and the schema PRAGMAs. The same reader reads the target database.
 2. The two schemas are compared object by object. Expressions and views are compared by the bytecode SQLite compiles them to, so the same definition written differently is not a change.
-3. The difference becomes DDL: `ALTER TABLE` where SQLite supports the change, and otherwise a rebuild of the table, which runs only when `--allow-table-rebuild` is given.
+3. The difference becomes DDL: `ALTER TABLE` where SQLite supports the change, and otherwise a rebuild of the table, which runs only when `--allow-rebuild` is given.
 4. `plan` prints the DDL, and `apply` runs it in one transaction.
 
 `hazel dump` prints the schema of a database in the same form. Given back as the schema file, a dump plans clean.
@@ -34,13 +34,13 @@ docker run --rm -it ghcr.io/winebarrel/hazel-demo
 The container starts a shell in `/demo`, where `demo.db` holds the schema of `current.sql`. Edit `desired.sql`, then run:
 
 ```bash
-hazel plan  --allow-table-rebuild demo.db desired.sql    # show the DDL diff
-hazel apply --allow-table-rebuild demo.db desired.sql    # apply the changes
+hazel plan  --allow-rebuild demo.db desired.sql    # show the DDL diff
+hazel apply --allow-rebuild demo.db desired.sql    # apply the changes
 hazel plan  demo.db desired.sql                          # ...should now print -- No changes
 hazel dump  demo.db                                      # dump the current schema
 ```
 
-`desired.sql` changes the type of a column of `posts`, which needs a rebuild of the table, so `plan` and `apply` fail without `--allow-table-rebuild`.
+`desired.sql` changes the type of a column of `posts`, which needs a rebuild of the table, so `plan` and `apply` fail without `--allow-rebuild`.
 
 The source for the image is under [`demo/`](https://github.com/winebarrel/hazel/tree/main/demo).
 
