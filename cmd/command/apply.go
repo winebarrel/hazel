@@ -111,7 +111,7 @@ func (cmd *Apply) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	}
 	fmt.Fprintln(w, databaseLine(target, exists))                     //nolint:errcheck
 	fmt.Fprintf(w, "-- Plan (%s)\n", summary(cmd.count(want.Schema))) //nolint:errcheck
-	if err := refuseRebuild(w, plan, cmd.AllowTableRebuild, false); err != nil {
+	if err := refuseRebuild(w, plan, cmd.AllowRebuild, false); err != nil {
 		return err
 	}
 

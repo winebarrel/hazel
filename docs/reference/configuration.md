@@ -8,7 +8,7 @@ Options can be given on the command line, in environment variables and in a YAML
 # hazel.yml
 exclude:
   - tmp_*
-allow-table-rebuild: true
+allow-rebuild: true
 busy-timeout: 10s
 ```
 
@@ -28,7 +28,7 @@ These options are for a single run and cannot be set in the file: `--check`, `--
 | `HAZEL_CONFIG` | `-C`, `--config` |
 | `HAZEL_INCLUDE` | `-I`, `--include` (comma-separated) |
 | `HAZEL_EXCLUDE` | `-E`, `--exclude` (comma-separated) |
-| `HAZEL_ALLOW_TABLE_REBUILD` | `--allow-table-rebuild` |
+| `HAZEL_ALLOW_REBUILD` | `--allow-rebuild` |
 | `HAZEL_BUSY_TIMEOUT` | `--busy-timeout` |
 | `HAZEL_SKIP_FOREIGN_KEY_CHECK` | `--skip-foreign-key-check` |
 | `HAZEL_NO_CREATE` | `--no-create` |

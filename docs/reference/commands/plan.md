@@ -5,7 +5,7 @@ plan -- print the DDL that takes a database to the schema files
 ## Synopsis
 
 ```
-hazel plan [-I PAT]... [-E PAT]... [--allow-table-rebuild] [--check] [--no-create]
+hazel plan [-I PAT]... [-E PAT]... [--allow-rebuild] [--check] [--no-create]
            DB SCHEMA_FILE...
 ```
 
@@ -46,13 +46,13 @@ CREATE INDEX users_name ON users (name);
 
 The statements run in this order: views and triggers are dropped, then indexes; tables are renamed, altered and rebuilt; tables are dropped and created; then indexes, views and triggers are created.
 
-A change that `ALTER TABLE` cannot make needs a rebuild of the table (see [Schema objects](../objects.md)). Without `--allow-table-rebuild`, `plan` prints the tables to rebuild and fails with exit status 3:
+A change that `ALTER TABLE` cannot make needs a rebuild of the table (see [Schema objects](../objects.md)). Without `--allow-rebuild`, `plan` prints the tables to rebuild and fails with exit status 3:
 
 ```
 -- Database: /path/to/app.db
 -- Plan (1 table, 0 views, 1 index, 0 triggers)
 -- table rebuild required: users (NOT NULL of name; type of age; adds column email)
-hazel: error: 1 table needs a rebuild; pass --allow-table-rebuild to allow it
+hazel: error: 1 table needs a rebuild; pass --allow-rebuild to allow it
 ```
 
 The condition of an execute statement is evaluated against the database as it is before the DDL. A statement whose condition returns 0 is left out. A condition that fails, for example because it reads a table the plan creates, keeps its statement with a note, and `apply` evaluates it after the DDL. A condition that returns anything other than 0 or 1 is an error.
@@ -65,7 +65,7 @@ The condition of an execute statement is evaluated against the database as it is
 `-E PAT`, `--exclude=PAT`
 :   Leave out the tables, views and virtual tables whose name matches the pattern. Can be repeated.
 
-`--allow-table-rebuild`
+`--allow-rebuild`
 :   Allow rebuilding a table for a change `ALTER TABLE` cannot make.
 
 `--check`
@@ -84,7 +84,7 @@ An object left out gets no DDL at all: it is not created, changed or dropped. It
 
 ## Exit status
 
-0 on success, also when there are changes. 1 on an error. 2 with `--check` when there are changes. 3 when a rebuild is needed and `--allow-table-rebuild` is not given. 80 on a usage error. See [Exit status](../exit-status.md).
+0 on success, also when there are changes. 1 on an error. 2 with `--check` when there are changes. 3 when a rebuild is needed and `--allow-rebuild` is not given. 80 on a usage error. See [Exit status](../exit-status.md).
 
 ## Examples
 

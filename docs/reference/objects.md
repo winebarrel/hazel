@@ -62,7 +62,7 @@ CREATE INDEX users_name ON users (name);
 - With `AUTOINCREMENT`, the value in `sqlite_sequence` is carried over.
 - The indexes and triggers of the table are created again, and the views and triggers that depend on it are dropped first and created again after.
 
-A rebuild runs only with `--allow-table-rebuild`. `apply` turns `foreign_keys` off for its connection and runs `PRAGMA foreign_key_check` before the commit.
+A rebuild runs only with `--allow-rebuild`. `apply` turns `foreign_keys` off for its connection and runs `PRAGMA foreign_key_check` before the commit.
 
 ## Drops
 

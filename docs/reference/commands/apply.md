@@ -5,7 +5,7 @@ apply -- run the DDL that takes a database to the schema files
 ## Synopsis
 
 ```
-hazel apply [-I PAT]... [-E PAT]... [--allow-table-rebuild] [--busy-timeout=DURATION]
+hazel apply [-I PAT]... [-E PAT]... [--allow-rebuild] [--busy-timeout=DURATION]
             [--skip-foreign-key-check] [--no-create] DB SCHEMA_FILE...
 ```
 
@@ -47,7 +47,7 @@ hazel: error: ALTER TABLE users ALTER COLUMN name SET NOT NULL: existing rows in
 `-I PAT`, `--include=PAT`, `-E PAT`, `--exclude=PAT`
 :   Select the tables, views and virtual tables to manage, as for [`plan`](plan.md#filtering).
 
-`--allow-table-rebuild`
+`--allow-rebuild`
 :   Allow rebuilding a table for a change `ALTER TABLE` cannot make. Without it, a plan with a rebuild runs nothing and fails with exit status 3.
 
 `--busy-timeout=DURATION`
@@ -61,7 +61,7 @@ hazel: error: ALTER TABLE users ALTER COLUMN name SET NOT NULL: existing rows in
 
 ## Exit status
 
-0 on success. 1 on an error, after which nothing has changed. 3 when a rebuild is needed and `--allow-table-rebuild` is not given. 80 on a usage error.
+0 on success. 1 on an error, after which nothing has changed. 3 when a rebuild is needed and `--allow-rebuild` is not given. 80 on a usage error.
 
 ## Notes
 

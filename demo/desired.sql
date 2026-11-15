@@ -19,7 +19,7 @@ CREATE TABLE users (
 );
 
 -- views is now an INTEGER, which needs a rebuild of the table
--- (--allow-table-rebuild); body is now NOT NULL, with '' in the draft
+-- (--allow-rebuild); body is now NOT NULL, with '' in the draft
 -- that had none; added updated_at, filled from created_at, and a CHECK
 -- on status.
 CREATE TABLE posts (

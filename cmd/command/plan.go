@@ -72,7 +72,7 @@ func (cmd *Plan) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	if err != nil {
 		return err
 	}
-	return writePlan(w, plan, executes, cmd.AllowTableRebuild, cmd.Check.Check)
+	return writePlan(w, plan, executes, cmd.AllowRebuild, cmd.Check.Check)
 }
 
 // planExecutes evaluates the condition of each statement marked with

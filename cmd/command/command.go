@@ -22,19 +22,19 @@ type Stderr io.Writer
 var ErrChanges = errors.New("there are changes")
 
 // RebuildRequiredError is returned when the plan rebuilds a table and
-// --allow-table-rebuild is not set. main turns it into exit status 3.
+// --allow-rebuild is not set. main turns it into exit status 3.
 type RebuildRequiredError struct {
 	Rebuilds []diff.Rebuild
 }
 
 func (e *RebuildRequiredError) Error() string {
 	n := len(e.Rebuilds)
-	return fmt.Sprintf("%d %s a rebuild; pass --allow-table-rebuild to allow it", n, plural(n, "table needs", "tables need"))
+	return fmt.Sprintf("%d %s a rebuild; pass --allow-rebuild to allow it", n, plural(n, "table needs", "tables need"))
 }
 
-// Rebuild holds --allow-table-rebuild.
+// Rebuild holds --allow-rebuild.
 type Rebuild struct {
-	AllowTableRebuild bool `env:"HAZEL_ALLOW_TABLE_REBUILD" help:"Allow rebuilding a table for a change ALTER TABLE cannot make. Without it, such a plan fails with exit status 3."`
+	AllowRebuild bool `env:"HAZEL_ALLOW_REBUILD" help:"Allow rebuilding a table for a change ALTER TABLE cannot make. Without it, such a plan fails with exit status 3."`
 }
 
 // NoCreate holds --no-create.
@@ -74,7 +74,7 @@ func loadFiles(ctx context.Context, paths []string, stderr io.Writer) (*desired.
 }
 
 // refuseRebuild lists the tables the plan rebuilds and returns the error that
-// refuses them, when --allow-table-rebuild is not set. With --check, the
+// refuses them, when --allow-rebuild is not set. With --check, the
 // changes win: ErrChanges.
 func refuseRebuild(w io.Writer, plan *diff.Plan, allowRebuild, check bool) error {
 	if len(plan.Rebuilds) == 0 || allowRebuild {

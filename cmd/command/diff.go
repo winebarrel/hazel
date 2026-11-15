@@ -31,5 +31,5 @@ func (cmd *Diff) Run(ctx context.Context, w io.Writer, stderr Stderr) error {
 	if err != nil {
 		return err
 	}
-	return writePlan(w, plan, nil, cmd.AllowTableRebuild, cmd.Check.Check)
+	return writePlan(w, plan, nil, cmd.AllowRebuild, cmd.Check.Check)
 }
