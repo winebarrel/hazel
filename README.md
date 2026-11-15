@@ -77,3 +77,7 @@ make build  # builds ./hazel
 make test
 make lint
 ```
+
+## Related projects
+
+- [pistachio](https://github.com/winebarrel/pistachio) is a declarative schema management tool for PostgreSQL.
