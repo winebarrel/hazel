@@ -15,7 +15,7 @@ ARG HAZEL_VERSION=devel
 # modernc.org/sqlite is pure Go, so no C compiler is needed.
 RUN CGO_ENABLED=0 go build -o /out/hazel -ldflags "-X main.version=${HAZEL_VERSION#v}" ./cmd/hazel
 
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache bash vim less bat sqlite && \
     adduser -D -h /home/demo -s /bin/bash demo && \
     printf "alias ll='ls -lF'\nalias vi='vim'\nexport LESSOPEN='| bat --color=always -pp %%s'\nexport LESS='-R'\n" > /home/demo/.bashrc && \
