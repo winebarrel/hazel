@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/winebarrel/hazel/actions/workflows/ci.yml/badge.svg)](https://github.com/winebarrel/hazel/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/winebarrel/hazel/graph/badge.svg)](https://codecov.io/gh/winebarrel/hazel)
-[![AI Generated](https://img.shields.io/badge/AI%20Generated-Claude-orange?logo=anthropic)](https://claude.ai/claude-code)
+[![AI Generated](https://img.shields.io/badge/AI%20Generated-Claude-orange?logo=anthropic)](https://claude.com/product/claude-code)
 
 hazel is a declarative schema management tool for SQLite. It reads the desired schema from SQL files and generates the DDL that brings a database in line with it.
 
